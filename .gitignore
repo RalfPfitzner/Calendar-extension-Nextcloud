@@ -1,0 +1,7 @@
+/node_modules/
+/vendor/
+/js/
+/css/
+/build/
+.phpunit.cache/
+*.phpunit.result.cache

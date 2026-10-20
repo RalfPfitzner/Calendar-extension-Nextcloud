@@ -1,0 +1,64 @@
+name: Release
+
+# Bei einem Tag wie v0.1.0 wird das Paket msp_planung-0.1.0.tar.gz gebaut und an einen Release-Entwurf gehängt,
+# aber erst, wenn Version und CHANGELOG passen und die CI auf genau diesem Commit grün ist. Veröffentlichen tut Ralf.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Version prüfen
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(jq -r .version package.json)"
+          info="$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)"
+          test "$TAG" = "v$version" || { echo "::error title=Version::Tag $TAG passt nicht zu package.json ($version)"; exit 1; }
+          test "$info" = "$version" || { echo "::error title=Version::appinfo/info.xml ($info) passt nicht zu package.json ($version)"; exit 1; }
+          grep -q "^## \\[$version\\]" CHANGELOG.md || { echo "::error title=Version::CHANGELOG.md hat keinen Abschnitt ## [$version]"; exit 1; }
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  paket:
+    needs: [version, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: tools/paket.sh
+      - name: An Release-Entwurf hängen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          datei="build/msp_planung-${TAG#v}.tar.gz"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$datei" --clobber
+          else
+            gh release create "$TAG" "$datei" --draft --title "$TAG" --notes "Änderungen siehe CHANGELOG.md, Abschnitt ${TAG#v}."
+          fi

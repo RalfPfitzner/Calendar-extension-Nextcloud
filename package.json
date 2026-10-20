@@ -1,0 +1,34 @@
+{
+  "name": "msp_planung",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MSP-Planung: Veranstaltungsplanung im Nextcloud-Kalender",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "vite build --mode production",
+    "dev": "vite build --mode development",
+    "watch": "vite build --mode development --watch",
+    "test:ui": "node --test --test-concurrency=1 test-ui/*.test.mjs"
+  },
+  "browserslist": [
+    "extends @nextcloud/browserslist-config"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@nextcloud/axios": "^2.6.0",
+    "@nextcloud/router": "^3.2.0",
+    "@nextcloud/vue": "^9.13.1",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@nextcloud/browserslist-config": "^3.1.2",
+    "@nextcloud/vite-config": "^2.5.4",
+    "playwright-core": "^1.64.1",
+    "sass": "^1.105.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.7"
+  }
+}

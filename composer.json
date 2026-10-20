@@ -1,0 +1,28 @@
+{
+	"name": "ralfpfitzner/msp_planung",
+	"description": "MSP-Planung: Veranstaltungsplanung im Nextcloud-Kalender",
+	"license": "GPL-3.0-or-later",
+	"type": "project",
+	"autoload": {
+		"psr-4": {
+			"OCA\\MspPlanung\\": "lib/"
+		}
+	},
+	"require": {
+		"php": ">=8.1"
+	},
+	"require-dev": {
+		"phpunit/phpunit": "^10.5",
+		"sabre/vobject": "^4.5"
+	},
+	"config": {
+		"platform": {
+			"php": "8.1"
+		},
+		"sort-packages": true
+	},
+	"scripts": {
+		"lint": "find lib appinfo templates tests -name '*.php' -print0 | xargs -0 -n1 php -l",
+		"test:unit": "phpunit -c tests/phpunit.xml"
+	}
+}

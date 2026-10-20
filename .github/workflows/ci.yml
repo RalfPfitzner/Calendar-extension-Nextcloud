@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Der Release-Workflow ruft die CI vor dem Bauen des Pakets auf
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: PHP-Version
+        run: php -v
+      - run: composer install --no-interaction --no-progress
+      - name: Syntax
+        run: composer lint
+      - name: Unit-Tests
+        run: composer test:unit
+
+  # Echte Nextcloud 32.0.5 mit Kalender-App in Docker, Browser-Tests mit Playwright
+  nextcloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Chromium für Playwright
+        run: npx playwright-core install --with-deps chromium
+      - name: Test-Nextcloud starten
+        run: tools/test-nextcloud.sh
+      - name: Browser-Tests
+        run: npm run test:ui
+      - name: Nextcloud-Protokoll bei Fehler
+        if: failure()
+        run: |
+          docker exec msp-nc cat /var/www/html/data/nextcloud.log | tail -50 || true
+          docker logs msp-nc | tail -50 || true
+      - name: Paket bauen
+        run: tools/paket.sh
