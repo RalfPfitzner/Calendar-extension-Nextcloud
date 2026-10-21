@@ -8,7 +8,8 @@ set -euo pipefail
 NAME=msp-nc
 PORT=${NC_PORT:-8080}
 NC_IMAGE=nextcloud:32.0.5-apache
-KALENDER_APP=https://github.com/nextcloud-releases/calendar/releases/download/v6.0.3/calendar-v6.0.3.tar.gz
+KALENDER_VERSION=${KALENDER_VERSION:-6.6.2}
+KALENDER_APP=https://github.com/nextcloud-releases/calendar/releases/download/v$KALENDER_VERSION/calendar-v$KALENDER_VERSION.tar.gz
 ADMIN_PASS=Admin-Test-123
 EVA_PASS=Eva-Test-12345
 APP=$(cd "$(dirname "$0")/.." && pwd)

@@ -10,7 +10,7 @@ Nextcloud-App für den Makerspace Mayen-Koblenz: Veranstaltungen werden vollstä
 
 Anforderungen aus dem Planungs-Chat: [`docs/info.md`](docs/info.md). Umsetzung, Datenformat und offene Punkte: [`docs/KONZEPT.md`](docs/KONZEPT.md).
 
-**Stand: Version 0.1.0, nur für Nextcloud 32.** Getestet in einer Test-Nextcloud 32.0.5 mit Kalender-App 6.0.3.
+**Stand: Version 0.1.0, nur für Nextcloud 32.** Getestet in einer Test-Nextcloud 32.0.5 mit Kalender-App 6.6.2 (vorher auch 6.0.3).
 
 ## Installation
 

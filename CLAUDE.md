@@ -19,7 +19,7 @@ Wie im Bestellportal und in der Goethe-Verwaltung: Listen seitenweise, scrollen 
 ## Testen
 
 - `composer install && composer test:unit` – Feldzuordnung, Escaping, Serien, Link.
-- `npm ci && npm run build && tools/test-nextcloud.sh && npm run test:ui` – echte Nextcloud 32.0.5 in Docker mit Kalender-App 6.0.3, Testdaten aus `tools/testdaten.sh` (nur erfundene Daten), Browser-Tests mit Playwright. In der Cloud-Umgebung: `CHROMIUM=/opt/pw-browsers/chromium`, Docker-Daemon ggf. mit `sudo dockerd &` starten.
+- `npm ci && npm run build && tools/test-nextcloud.sh && npm run test:ui` – echte Nextcloud 32.0.5 in Docker mit Kalender-App 6.6.2 (andere Version: `KALENDER_VERSION=…`), Testdaten aus `tools/testdaten.sh` (nur erfundene Daten), Browser-Tests mit Playwright. In der Cloud-Umgebung: `CHROMIUM=/opt/pw-browsers/chromium`, Docker-Daemon ggf. mit `sudo dockerd &` starten.
 - Vor dem Abgeben beides laufen lassen; neue Funktionen bekommen Tests. Was nur auf Ralfs Instanz prüfbar ist, im PR ausdrücklich als „von Ralf zu testen“ aufführen.
 
 ## Versionen und Releases

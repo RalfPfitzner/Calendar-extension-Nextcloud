@@ -1,4 +1,4 @@
-// Browser-Test gegen eine laufende Test-Nextcloud mit aktivierter App (siehe docs/ENTWICKLUNG.md).
+// Browser-Test gegen eine laufende Test-Nextcloud mit aktivierter App und Kalender-App (tools/test-nextcloud.sh).
 // Legt vorher mit tools/testdaten.sh den Kalender „MSP Cloud Kalender“ mit Testterminen neu an.
 import { execFileSync } from 'node:child_process'
 import { after, before, test } from 'node:test'
@@ -141,4 +141,44 @@ test('Lesefreigabe: private Termine fehlen, Formular nur zum Lesen', async () =>
 	assert.equal(await tab.getByLabel('Zuständig intern').isDisabled(), true)
 	assert.deepEqual(evaFehler, [])
 	await kontext.close()
+})
+
+test('Kalender-App: Bearbeiten des Termins lässt die Planung stehen', async () => {
+	const ics = async () => {
+		const antwort = await fetch(`${BASIS}/remote.php/dav/calendars/${NUTZER}/msp-cloud/workshop-1.ics`, {
+			headers: { Authorization: 'Basic ' + Buffer.from(`${NUTZER}:${PASSWORT}`).toString('base64') },
+		})
+		return antwort.text()
+	}
+	const vorher = await ics()
+	assert.match(vorher, /X-MSP-ZUSTAENDIG:Eva/)
+	const [, jahr, monat, tag] = vorher.match(/DTSTART;TZID=Europe\/Berlin:(\d{4})(\d{2})(\d{2})/)
+
+	// Englische Oberfläche, damit die Bezeichnungen der Kalender-App fest sind.
+	const kontext = await browser.newContext({ locale: 'en-US', timezoneId: 'Europe/Berlin', viewport: { width: 1400, height: 1000 } })
+	const tab = await kontext.newPage()
+	const kalenderFehler = []
+	tab.on('pageerror', (e) => kalenderFehler.push(e.message))
+	await anmelden(tab, NUTZER, PASSWORT)
+	await tab.goto(`${BASIS}/index.php/apps/calendar/timeGridWeek/${jahr}-${monat}-${tag}`)
+	await tab.getByText('Lötworkshop Grundschule').first().click()
+	// Der Link aus der Beschreibung ist im Termin anklickbar.
+	await tab.locator('a[href*="/apps/msp_planung/"]').first().waitFor()
+	await tab.getByRole('button', { name: 'Edit', exact: true }).click()
+	await tab.getByPlaceholder('Title').fill('Lötworkshop Grundschule (geändert in der Kalender-App)')
+	await tab.getByRole('button', { name: 'Update', exact: true }).click()
+	await tab.getByPlaceholder('Title').waitFor({ state: 'detached' })
+	await kontext.close()
+
+	let nachher = ''
+	for (let versuch = 0; versuch < 20 && !nachher.includes('geändert in der Kalender-App'); versuch++) {
+		await new Promise((fertig) => setTimeout(fertig, 250))
+		nachher = await ics()
+	}
+	assert.match(nachher, /SUMMARY:Lötworkshop Grundschule \(geändert in der Kalender-App\)/)
+	for (const zeile of vorher.split(/\r?\n/).filter((z) => z.startsWith('X-MSP-'))) {
+		assert.ok(nachher.includes(zeile), `fehlt nach dem Bearbeiten: ${zeile}`)
+	}
+	assert.match(nachher.replace(/\r?\n /g, ''), /Planung öffnen: http/)
+	assert.deepEqual(kalenderFehler, [])
 })
