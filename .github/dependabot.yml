@@ -5,6 +5,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      # Patch- und Minor-Updates je Bereich in einem PR; Hauptversionen kommen einzeln
+      kleine-updates:
+        update-types: ["minor", "patch"]
     ignore:
       # TypeScript bleibt auf 5.x, 7.x bricht vite-plugin-dts (CLAUDE.md)
       - dependency-name: typescript
@@ -12,11 +16,17 @@ updates:
       # Hauptversionen von @nextcloud/vue folgen den Nextcloud-Versionen; die App gibt es nur für Nextcloud 32
       - dependency-name: "@nextcloud/vue"
         update-types: ["version-update:semver-major"]
+      # Vite 8 braucht @nextcloud/vite-config 3 (bisher nur Beta); beide zusammen in einem eigenen PR umstellen
+      - dependency-name: vite
+        update-types: ["version-update:semver-major"]
   # Nur Testwerkzeuge (PHPUnit, sabre/vobject); die PHP-Version legt config.platform in composer.json fest
   - package-ecosystem: composer
     directory: /
     schedule:
       interval: weekly
+    groups:
+      kleine-updates:
+        update-types: ["minor", "patch"]
     ignore:
       # sabre/vobject bringt Nextcloud selbst mit, die Tests sollen dieselbe Hauptversion nutzen
       - dependency-name: sabre/vobject
@@ -25,3 +35,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      kleine-updates:
+        update-types: ["minor", "patch"]

@@ -5,7 +5,10 @@
 ### Geändert
 - Dependabot schlägt wöchentlich Updates für npm-Pakete, Composer (Testwerkzeuge) und GitHub Actions vor
   (`.github/dependabot.yml`). Ohne Hauptversions-Sprünge bei TypeScript (bleibt 5.x), `@nextcloud/vue` (folgt der
-  Nextcloud-Version) und `sabre/vobject` (bringt Nextcloud mit).
+  Nextcloud-Version) und `sabre/vobject` (bringt Nextcloud mit). Patch- und Minor-Updates kommen je Bereich gebündelt
+  in einem PR.
+- Vite bleibt vorerst bei 7: Vite 8 braucht `@nextcloud/vite-config` 3, das es bisher nur als Beta gibt; Dependabot
+  schlägt bis dahin keine neue Vite-Hauptversion vor.
 
 ## [0.1.0] - 2026-10-20
 
