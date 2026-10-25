@@ -2,6 +2,11 @@
 
 ## [Unveröffentlicht]
 
+### Geändert
+- Dependabot schlägt wöchentlich Updates für npm-Pakete, Composer (Testwerkzeuge) und GitHub Actions vor
+  (`.github/dependabot.yml`). Ohne Hauptversions-Sprünge bei TypeScript (bleibt 5.x), `@nextcloud/vue` (folgt der
+  Nextcloud-Version) und `sabre/vobject` (bringt Nextcloud mit).
+
 ## [0.1.0] - 2026-10-20
 
 Erste Version nach dem Planungs-Chat vom 20.10.2026 (`docs/info.md`).
