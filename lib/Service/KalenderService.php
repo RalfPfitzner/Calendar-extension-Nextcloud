@@ -12,7 +12,7 @@ use OCP\Calendar\ICalendar;
 use OCP\Calendar\ICalendarIsShared;
 use OCP\Calendar\ICalendarIsWritable;
 use OCP\Calendar\IManager;
-use OCP\IConfig;
+use OCP\Config\IUserConfig;
 use OCP\IURLGenerator;
 
 /**
@@ -34,7 +34,7 @@ class KalenderService {
 		private IManager $kalenderManager,
 		private CalDavBackend $backend,
 		private IURLGenerator $urlGenerator,
-		private IConfig $config,
+		private IUserConfig $userConfig,
 		private Planung $planung,
 	) {
 	}
@@ -65,7 +65,7 @@ class KalenderService {
 
 	public function kalenderWaehlen(string $uid, int $kalenderId): void {
 		$this->kalenderFuer($uid, $kalenderId);
-		$this->config->setUserValue($uid, Application::APP_ID, 'kalender', (string)$kalenderId);
+		$this->userConfig->setValueString($uid, Application::APP_ID, 'kalender', (string)$kalenderId);
 	}
 
 	/**
@@ -187,7 +187,7 @@ class KalenderService {
 
 	/** @param list<array{id:int,name:string,schreibbar:bool}> $liste */
 	private function gewaehlterKalender(string $uid, array $liste): ?int {
-		$gespeichert = (int)$this->config->getUserValue($uid, Application::APP_ID, 'kalender', '0');
+		$gespeichert = (int)$this->userConfig->getValueString($uid, Application::APP_ID, 'kalender', '0');
 		foreach ($liste as $eintrag) {
 			if ($eintrag['id'] === $gespeichert) {
 				return $gespeichert;

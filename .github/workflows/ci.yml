@@ -30,7 +30,7 @@ jobs:
       - name: Unit-Tests
         run: composer test:unit
 
-  # Echte Nextcloud 32.0.5 mit Kalender-App in Docker, Browser-Tests mit Playwright
+  # Echte Nextcloud 34.0.5 mit Kalender-App in Docker, Browser-Tests mit Playwright
   nextcloud:
     runs-on: ubuntu-latest
     timeout-minutes: 25

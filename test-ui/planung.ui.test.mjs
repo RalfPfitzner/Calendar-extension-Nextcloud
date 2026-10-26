@@ -143,6 +143,36 @@ test('Lesefreigabe: private Termine fehlen, Formular nur zum Lesen', async () =>
 	await kontext.close()
 })
 
+test('Kalenderauswahl wird je Konto gespeichert', async () => {
+	const api = async (methode, pfad, daten) => {
+		const antwort = await fetch(`${BASIS}/index.php/apps/msp_planung/api${pfad}`, {
+			method: methode,
+			headers: {
+				Authorization: 'Basic ' + Buffer.from(`${NUTZER}:${PASSWORT}`).toString('base64'),
+				'OCS-APIRequest': 'true',
+				'Content-Type': 'application/json',
+			},
+			body: daten === undefined ? undefined : JSON.stringify(daten),
+		})
+		return { status: antwort.status, daten: await antwort.json() }
+	}
+	const gewaehlt = async () => (await api('GET', '/kalender')).daten.kalender.find((k) => k.gewaehlt)?.name
+
+	const { daten } = await api('GET', '/kalender')
+	const msp = daten.kalender.find((k) => k.name === 'MSP Cloud Kalender')
+	const anderer = daten.kalender.find((k) => k.id !== msp.id)
+	assert.ok(anderer, 'Test braucht einen zweiten Kalender')
+	assert.equal(await gewaehlt(), msp.name)
+
+	assert.equal((await api('PUT', '/kalender/auswahl', { kalender: anderer.id })).status, 200)
+	assert.equal(await gewaehlt(), anderer.name)
+	assert.equal((await api('PUT', '/kalender/auswahl', { kalender: 999999 })).status, 404)
+	assert.equal(await gewaehlt(), anderer.name)
+
+	assert.equal((await api('PUT', '/kalender/auswahl', { kalender: msp.id })).status, 200)
+	assert.equal(await gewaehlt(), msp.name)
+})
+
 test('Kalender-App: Bearbeiten des Termins lässt die Planung stehen', async () => {
 	const ics = async () => {
 		const antwort = await fetch(`${BASIS}/remote.php/dav/calendars/${NUTZER}/msp-cloud/workshop-1.ics`, {

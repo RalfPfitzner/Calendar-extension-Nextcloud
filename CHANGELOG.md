@@ -2,7 +2,17 @@
 
 ## [Unveröffentlicht]
 
+## [0.1.1] - 2026-10-26
+
+### Hinweise zur Installation
+- Nur Nextcloud 34 (Ralfs Instanz läuft seit Oktober 2026 mit 34.0.5.1). Version 0.1.0 ließ sich dort nicht aktivieren
+  („not compatible with this version of the server“), weil sie auf Nextcloud 32 festgelegt war.
+
 ### Geändert
+- Kompatibel mit Nextcloud 34 statt 32 (`appinfo/info.xml`). Test-Nextcloud und CI laufen mit 34.0.5 und Kalender-App
+  6.6.3 (wie auf der Instanz).
+- Die gemerkte Kalenderauswahl je Konto wird über `IUserConfig` gelesen und gespeichert statt über die seit Nextcloud 33
+  veralteten `IConfig::getUserValue`/`setUserValue`. Bereits gespeicherte Auswahlen bleiben gültig.
 - Dependabot schlägt wöchentlich Updates für npm-Pakete, Composer (Testwerkzeuge) und GitHub Actions vor
   (`.github/dependabot.yml`). Ohne Hauptversions-Sprünge bei TypeScript (bleibt 5.x), `@nextcloud/vue` (folgt der
   Nextcloud-Version) und `sabre/vobject` (bringt Nextcloud mit). Patch- und Minor-Updates kommen je Bereich gebündelt

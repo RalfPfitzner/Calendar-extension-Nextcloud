@@ -13,7 +13,7 @@ updates:
       # TypeScript bleibt auf 5.x, 7.x bricht vite-plugin-dts (CLAUDE.md)
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
-      # Hauptversionen von @nextcloud/vue folgen den Nextcloud-Versionen; die App gibt es nur für Nextcloud 32
+      # Hauptversionen von @nextcloud/vue folgen den Nextcloud-Versionen; die App gibt es nur für Nextcloud 34
       - dependency-name: "@nextcloud/vue"
         update-types: ["version-update:semver-major"]
       # Vite 8 braucht @nextcloud/vite-config 3 (bisher nur Beta); beide zusammen in einem eigenen PR umstellen
