@@ -10,7 +10,7 @@ Nextcloud-App für den Makerspace Mayen-Koblenz: Veranstaltungen werden vollstä
 
 Anforderungen aus dem Planungs-Chat: [`docs/info.md`](docs/info.md). Umsetzung, Datenformat und offene Punkte: [`docs/KONZEPT.md`](docs/KONZEPT.md).
 
-**Stand: Version 0.1.0, nur für Nextcloud 32.** Getestet in einer Test-Nextcloud 32.0.5 mit Kalender-App 6.6.2 (vorher auch 6.0.3).
+**Stand: nur für Nextcloud 34.** Getestet in einer Test-Nextcloud 34.0.5 mit Kalender-App 6.6.3 (Version 0.1.0 lief nur auf Nextcloud 32, getestet mit 32.0.5 und Kalender-App 6.0.3 und 6.6.2).
 
 ## Installation
 
@@ -48,7 +48,7 @@ tools/          Test-Nextcloud in Docker, Testdaten, Paketbau
 ```bash
 composer install && composer test:unit          # PHP-Tests
 npm ci && npm run build                          # Oberfläche bauen
-tools/test-nextcloud.sh                          # Nextcloud 32.0.5 + Kalender-App in Docker, Port 8080
+tools/test-nextcloud.sh                          # Nextcloud 34.0.5 + Kalender-App in Docker, Port 8080
 npm run test:ui                                  # Browser-Tests
 tools/test-nextcloud.sh --stopp                  # Container entfernen
 tools/paket.sh                                   # build/msp_planung-<version>.tar.gz
