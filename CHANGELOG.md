@@ -2,6 +2,8 @@
 
 ## [Unveröffentlicht]
 
+## [0.2.0] - 2026-10-27
+
 ### Hinweise zum Update
 - **Nur noch Nextcloud 34** (vorher nur 32): Ralfs Instanz läuft auf 34.0.5.1, dort ließ sich 0.1.0 nicht aktivieren.
   Paket wie gewohnt nach `custom_apps` entpacken und mit `occ app:enable msp_planung` aktivieren.

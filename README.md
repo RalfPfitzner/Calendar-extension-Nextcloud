@@ -10,7 +10,7 @@ Nextcloud-App für den Makerspace Mayen-Koblenz: Veranstaltungen werden vollstä
 
 Anforderungen aus dem Planungs-Chat: [`docs/info.md`](docs/info.md). Umsetzung, Datenformat und offene Punkte: [`docs/KONZEPT.md`](docs/KONZEPT.md).
 
-**Stand: nur für Nextcloud 34.** Getestet in einer Test-Nextcloud 34.0.5 mit Kalender-App 6.6.3 (Version 0.1.0 lief nur auf Nextcloud 32, getestet mit 32.0.5 und Kalender-App 6.0.3 und 6.6.2).
+**Stand: Version 0.2.0, nur für Nextcloud 34.** Getestet in einer Test-Nextcloud 34.0.5 mit Kalender-App 6.6.3 (Version 0.1.0 lief nur auf Nextcloud 32, getestet mit 32.0.5 und Kalender-App 6.0.3 und 6.6.2).
 
 ## Installation
 
@@ -20,8 +20,8 @@ Voraussetzung: Admin-Rechte in der Nextcloud und ein beschreibbares `custom_apps
 2. Auf dem Server nach `custom_apps` entpacken, Eigentümer auf den Webserver-Nutzer setzen und aktivieren. Beim offiziellen Docker-Image:
 
    ```bash
-   docker cp msp_planung-0.1.0.tar.gz nextcloud:/tmp/
-   docker exec nextcloud tar xzf /tmp/msp_planung-0.1.0.tar.gz -C /var/www/html/custom_apps
+   docker cp msp_planung-0.2.0.tar.gz nextcloud:/tmp/
+   docker exec nextcloud tar xzf /tmp/msp_planung-0.2.0.tar.gz -C /var/www/html/custom_apps
    docker exec nextcloud chown -R www-data:www-data /var/www/html/custom_apps/msp_planung
    docker exec -u www-data nextcloud php occ app:enable msp_planung
    ```
