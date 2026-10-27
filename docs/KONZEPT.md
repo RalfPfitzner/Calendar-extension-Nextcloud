@@ -13,7 +13,7 @@ Datum und Uhrzeit werden nur in der Kalender-App geändert; das Formular zeigt s
 
 ## 2. Datenformat im Termin
 
-Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist der Feldschlüssel in Großbuchstaben, `_` wird `-` (`Planung::eigenschaft`).
+Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist der Feldschlüssel in Großbuchstaben, `_` wird `-` (`Planung::eigenschaft`). Welche Felder es gibt, bestimmt das Feldschema (Abschnitt 3); die Tabelle zeigt das Vorgabe-Schema (`schema/vorgabe.json`).
 
 | Formularfeld | Schlüssel | Eigenschaft im VEVENT |
 |---|---|---|
@@ -36,25 +36,33 @@ Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist de
 | Benötigte weitere Betreuung / Unterstützung | `betreuung` | `X-CALPLAN-BETREUUNG` |
 | Besondere Wünsche / Hinweise / Anmerkungen | `hinweise` | `X-CALPLAN-HINWEISE` |
 
-- Alle Felder sind Freitext (auch „Anzahl der Teilnehmenden“, damit „ca. 20“ oder „2 Klassen“ geht), mehrzeilig wo sinnvoll, höchstens 5000 Zeichen. Leere Felder entfernen die Eigenschaft.
-- Pflicht ist nur der Titel; bei externem Ort die Adresse. Eine eingetragene E-Mail-Adresse muss gültig sein.
+- In der Vorgabe sind alle Felder Freitext (auch „Anzahl der Teilnehmenden“, damit „ca. 20“ oder „2 Klassen“ geht; wer Zahlen erzwingen will, stellt den Typ im Schema auf „Zahl“), mehrzeilig wo sinnvoll, höchstens 5000 Zeichen. Leere Felder entfernen die Eigenschaft.
+- Pflicht ist nur der Titel; bei externem Ort die Adresse. Pflichtfelder, Längen, Optionen und Typen prüft der Server nach dem Schema; eine eingetragene E-Mail-Adresse muss gültig sein.
+- Werte je Typ: Text wie eingegeben (einzeilig ohne Umbrüche), Zahl als eingegebene Zeichenkette (`12` oder `12,5`), Auswahl eine der Optionen, Ja/Nein als `1` oder fehlende Eigenschaft, Datum als `JJJJ-MM-TT`.
 - Ort mit Standardort (Einstellung `ort_vorgabe`): Ist `LOCATION` leer oder gleich dem Standardort, zeigt das Formular den Standardort; jeder andere Ort gilt als externer Ort. Beim Speichern mit Standardort wird genau dieser Text als Ort eingetragen. Eine eigene Eigenschaft für „extern“ gibt es nicht.
 - Ort ohne Standardort: ein freies Ortsfeld, leer erlaubt (`LOCATION` wird dann entfernt).
-- Die Schlüssel sind Datenformat und werden nie umbenannt. Neue Felder bekommen neue Schlüssel.
+- Die Schlüssel sind Datenformat. Wer im Schema einen Schlüssel ändert, trennt das Feld von bereits erfassten Werten; die App liest und löscht nur Eigenschaften, deren Schlüssel im aktuellen Schema stehen, alle anderen bleiben unangetastet.
 - Fremde Eigenschaften (Teilnehmende, Erinnerungen, Kategorien, `X-…` anderer Programme) bleiben unverändert.
 - Vor dem Umbau hieß das Präfix `X-MSP-`; weil die App bis dahin nirgends installiert war, gibt es keinen Rückfall auf diese Namen.
 
 ## 3. Einstellungen (Admin)
 
-Alle in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen von `EinstellungenLader`, bereinigt in `Einstellungen` (einzeilig, ohne Steuerzeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben.
+Einstellungsseite unter „Verwaltung → Zusätzliche Einstellungen“ (`lib/Settings/Admin.php`, Oberfläche `src/Admin.vue`), Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für Admins (ohne `NoAdminRequired`). Alle Werte in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen von `EinstellungenLader`, bereinigt in `Einstellungen` (einzeilig, ohne Steuerzeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben.
 
 | Schlüssel | Vorgabe | Wirkung |
 |---|---|---|
 | `ort_vorgabe` | leer | Standardort (siehe Abschnitt 2), höchstens 500 Zeichen |
 | `kalender_muster` | leer | Namensfragment für die Vorbelegung der Kalenderauswahl; ohne Treffer oder ohne Muster der erste Kalender |
 | `link_text` | `Planung öffnen:` | Erkennungszeichen vor dem Link in der Beschreibung; leer fällt auf die Vorgabe zurück, weil sonst jede Zeile als alter Link gälte |
+| `schema` | `schema/vorgabe.json` | Feldschema als JSON (siehe unten); ungültig gespeichert heißt Vorgabe plus Warnung im Protokoll |
 
-Die Oberfläche bekommt den Standardort über `GET /api/einstellungen`; der Linktext bleibt serverseitig.
+### Feldschema
+
+`{"abschnitte": [{"titel", "felder": [{"key", "label", "typ", "pflicht", "maxlen", "optionen", "inListe"}]}]}`, geprüft in `Schema::ausArray`: Schlüssel `[a-z][a-z0-9_]{0,30}`, nicht reserviert (`titel`, `ort`, `ort_extern`, `uid`, `beginn`, …), eindeutig; Typen `text`, `textarea`, `email`, `tel`, `number`, `select`, `checkbox`, `date`; `maxlen` 1–5000; `optionen` nur bei `select` (1–50, eindeutig); höchstens 50 Felder, 20 Abschnitte, 3 Felder mit `inListe`; Texte einzeilig, höchstens 200 Zeichen; JSON höchstens 64 KB. Das Schema ist Admin-Eingabe und wird trotzdem wie fremde Eingabe behandelt, weil es bestimmt, welche Eigenschaften in Termine geschrieben werden. Vorlagen liegen in `schema/` (`preset-msp.json`: die Word-Vorlage des ersten Nutzers mit ihren Bezeichnungen).
+
+Die Liste zeigt feste Spalten (Datum, Veranstaltung, Ort, Planung) plus die Felder mit `inListe` in Schema-Reihenfolge; `KalenderService::kurz` liefert sie unter `felder`.
+
+Die Oberfläche bekommt Standardort und Schema über `GET /api/einstellungen` (jedes angemeldete Konto); Kalender-Muster und Linktext bleiben serverseitig.
 
 ## 4. Entscheidungen der Umsetzung
 
@@ -83,5 +91,6 @@ Die Kontaktdaten Externer stehen im Termin. Sie sieht jeder, der Zugriff auf den
 - Erster Einsatz auf einer echten Instanz: `custom_apps` beschreibbar, App aktivieren als Admin, Einstellungen setzen, Freigaben, Bearbeiten in der Kalender-App und auf Handys (DAVx⁵, iOS).
 - Kopieren bzw. Duplizieren eines Termins in der Kalender-App: Bleiben die Felder erhalten, und zeigt der Link dann noch auf den alten Termin? Beim nächsten Speichern im Formular wird der Link der Kopie korrigiert.
 - Die Oberfläche ist einsprachig deutsch, Tagesgrenzen der Liste liegen in `Europe/Berlin`. Für andere Sprachräume braucht es l10n und die Zeitzone aus den Nextcloud-Einstellungen.
-- Geplant: Feldschema vom Admin definierbar (Abschnitte, Felder, Typen) statt fester Feldsatz; die Admin-Einstellungen bekommen eine eigene Seite.
+- Felder im Editor der Kalender-App anzeigen: wartet auf eine Editor-Schnittstelle der Kalender-App; das Schema ist so gebaut, dass es dort später eingehängt werden kann.
+- Ein Schema je Instanz; Schemata je Kalender bei Bedarf.
 - Optional: Druck-/PDF-Ansicht, Export (Excel/CSV) der Liste.

@@ -22,7 +22,8 @@ function testdatenAnlegen() {
 
 before(async () => {
 	testdatenAnlegen()
-	browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined })
+	// SICHTBAR=1 öffnet ein echtes Browserfenster und bremst die Schritte, um zuzuschauen.
+	browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, headless: !process.env.SICHTBAR, slowMo: process.env.SICHTBAR ? 300 : 0 })
 	seite = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 	seite.on('pageerror', (e) => fehler.push('JS: ' + e.message))
 	seite.on('console', (m) => {
@@ -81,7 +82,7 @@ test('Ungültige E-Mail zeigt die Meldung des Servers', async () => {
 	// Der Browser prüft type=email selbst; die Prüfung des Servers über das Formular umgehen.
 	await seite.locator('form').evaluate((f) => { f.noValidate = true })
 	await seite.getByRole('button', { name: 'Speichern' }).click()
-	await seite.getByText('Die E-Mail-Adresse des Kontakts ist ungültig').waitFor()
+	await seite.getByText('„E-Mail“: die E-Mail-Adresse ist ungültig').waitFor()
 	await seite.getByRole('button', { name: 'Änderungen verwerfen' }).click()
 })
 
@@ -94,7 +95,7 @@ test('Zurück zur Liste zeigt den Termin als erfasst', async () => {
 })
 
 test('Suche filtert und steht in der Adresse', async () => {
-	await seite.getByPlaceholder(/Titel, Kontakt/).fill('Werkstatt')
+	await seite.getByPlaceholder(/Titel, Ort/).fill('Werkstatt')
 	await seite.waitForURL(/suche=Werkstatt/)
 	await seite.waitForFunction(() => document.querySelectorAll('tbody tr').length === 1)
 	assert.match(await seite.locator('tbody').innerText(), /Offene Werkstatt/)

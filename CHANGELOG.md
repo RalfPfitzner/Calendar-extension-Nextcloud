@@ -16,7 +16,11 @@
 - Feld „Benötigte Maschinen / Tools“ heißt „Benötigte Ausstattung / Technik“ (Schlüssel `ausstattung`), Abschnitt 4
   „Inhalte & Ausstattung“. Alle Namen, Texte und Testdaten sind frei von Organisationsbezügen; die Anforderungen des
   ersten Nutzers liegen unverändert in `docs/historie/info.md`.
-- Neue Route `GET /api/einstellungen` liefert der Oberfläche den Standardort.
+- Neue Route `GET /api/einstellungen` liefert der Oberfläche Standardort und Feldschema.
+- Formular und Liste rendern aus dem Feldschema; die Liste zeigt neben Datum, Veranstaltung, Ort und Planung die
+  bis zu drei Felder mit `inListe` (Vorgabe: Zuständig intern, Organisation / Firma, Anzahl der Teilnehmenden).
+- Die Prüfung der Formularwerte folgt dem Schema: Typ (Zahl, E-Mail, Auswahl, Datum, Ja/Nein), Pflicht, Höchstlänge,
+  Optionen; Fehlermeldungen nennen die Bezeichnung des Feldes.
 - `gate` wartet jetzt auch auf `abhaengigkeiten` (dependency-review): Eine neue verwundbare Abhängigkeit in einem
   Pull Request lässt den Pflicht-Check scheitern; bei push und im Release ist der übersprungene Job erlaubt.
 - `appinfo/info.xml` erlaubt Nextcloud 34 bis 35. Gegen Nextcloud 35.0.2 mit Kalender-App 6.6.4 geprüft: die vier
@@ -40,11 +44,23 @@
 - Die CI prüft die Laufzeit-Abhängigkeiten des Bundles mit `npm audit` (ab Schwere „high“) bei jedem Lauf.
 
 ### Hinzugefügt
-- `lib/Service/Einstellungen.php` und `EinstellungenLader.php`: Admin-Einstellungen über `OCP\IAppConfig`, beim Lesen
-  bereinigt (einzeilig, ohne Steuerzeichen, Länge gedeckelt).
+- **Feldschema vom Admin definierbar** (`lib/Service/Schema.php`): Abschnitte mit Feldern `{key, label, typ, pflicht,
+  maxlen, optionen, inListe}`, Typen Text (ein- oder mehrzeilig), E-Mail, Telefon, Zahl, Auswahl, Ja/Nein, Datum.
+  Höchstens 50 Felder, 3 Listenfelder, Schlüssel `[a-z][a-z0-9_]{0,30}`, daraus die Eigenschaft `X-CALPLAN-<SCHLÜSSEL>`.
+  Vorgabe `schema/vorgabe.json` (die 16 bisherigen Felder), Vorlage `schema/preset-msp.json` (Word-Vorlage des ersten
+  Nutzers).
+- Admin-Einstellungsseite unter „Verwaltung → Zusätzliche Einstellungen → Kalender-Planung“ (`lib/Settings/Admin.php`,
+  `src/Admin.vue`): Vorgaben (Standardort, Kalender-Vorbelegung, Linktext) und Editor für Abschnitte und Felder mit
+  „Vorgabe laden“ und „Vorlage laden“. Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für
+  Admins, Speichern mit Rate-Limit 30 pro Minute.
+- `lib/Service/Einstellungen.php` und `EinstellungenSpeicher.php`: Admin-Einstellungen über `OCP\IAppConfig`, beim Lesen
+  und Schreiben bereinigt (einzeilig, ohne Steuerzeichen, Länge gedeckelt); ein ungültig gespeichertes Schema fällt auf
+  die Vorgabe zurück und landet als Warnung im Protokoll.
+- `test-ui/admin.ui.test.mjs`: Browser-Test der Einstellungsseite (Feld anlegen, Grenze der Listenfelder, Vorlage laden).
 - `test-ui/sicherheit.test.mjs`: die Live-Prüfungen des Sicherheits-Audits vom 27.10.2026 (Anmeldung, CSRF, fremde
   Kalender, private Termine, Nur-Lese-Freigabe, iCalendar-Injection, Eingabegrenzen, ETag, Host-Header, Antwort-Header)
-  laufen jetzt in der CI gegen beide Nextcloud-Versionen.
+  laufen jetzt in der CI gegen beide Nextcloud-Versionen, erweitert um die Schema-Routen (Nicht-Admin 403, feindliche
+  Schlüssel und 51 Felder 400, Bezeichnungen als Text statt HTML).
 - `tools/api-check.sh` und `phpstan.neon`: PHPStan (Level 6) gegen `nextcloud/ocp` in genau der geprüften Version plus
   `CalDavBackend` und `CalendarImpl` aus dem Server-Repo. Die CI fährt das für 34.0.5 und 35.0.2; ein Wechsel der
   Nextcloud-Schnittstellen fällt damit in der CI auf, nicht erst auf der Instanz.

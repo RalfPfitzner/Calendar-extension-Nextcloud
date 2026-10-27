@@ -23,7 +23,7 @@ Das ist ein Hobbyprojekt ohne Bereitschaft: Eingangsbestätigung innerhalb von 1
 
 ## Was eine Lücke ist
 
-Die App hat sechs API-Routen, alle nur für angemeldete Konten, und schreibt ausschließlich in bestehende Kalendertermine. Eine Lücke ist, wenn ein angemeldetes Konto mehr kann, als seine Kalender-Freigaben erlauben, oder ein nicht angemeldeter Aufruf überhaupt etwas erreicht:
+Die App hat zehn API-Routen, alle nur für angemeldete Konten (vier davon nur für Admins), und schreibt ausschließlich in bestehende Kalendertermine und in ihre eigene App-Konfiguration. Eine Lücke ist, wenn ein angemeldetes Konto mehr kann, als seine Kalender-Freigaben erlauben, oder ein nicht angemeldeter Aufruf überhaupt etwas erreicht:
 
 - Lesen oder Schreiben eines Termins in einem Kalender, der dem Konto nicht freigegeben ist (etwa durch Raten einer Kalender-ID)
 - Lesen privater oder vertraulicher Termine eines geteilten Kalenders als Empfänger der Freigabe
@@ -33,6 +33,8 @@ Die App hat sechs API-Routen, alle nur für angemeldete Konten, und schreibt aus
 - Skript-Ausführung in der Oberfläche über Termininhalte
 - Umgehen der Längen- oder Typprüfung, sodass Nextcloud oder die Kalender-App das Objekt danach nicht mehr lesen kann
 - fremder Host im Link „Planung öffnen“, der in die Terminbeschreibung geschrieben wird
+- Ändern des Feldschemas oder der Vorgaben durch ein Konto ohne Admin-Rechte
+- ein Feldschema, das Eigenschaftsnamen außerhalb von `X-CALPLAN-[A-Z0-9-]+` erzeugt oder Skript in die Oberfläche bringt
 
 ## Was keine Lücke ist
 
@@ -49,7 +51,7 @@ Dokumentierte Entscheidungen sind keine Befunde. Sie hier zu nennen, spart beide
 
 ## Was die App bewusst nicht hat
 
-Keine eigenen Datenbanktabellen, keine Hintergrundjobs, keine Aufrufe nach außen, keine öffentlichen Seiten, kein Datei-Upload. Die Admin-Einstellungen (Standardort, Kalender-Muster, Linktext) liegen in der App-Konfiguration von Nextcloud und werden beim Lesen bereinigt und in der Länge gedeckelt; sie sind nur über `occ` setzbar. Welche Kalender ein Konto sieht und ob es schreiben darf, kommt aus der öffentlichen Kalender-Schnittstelle von Nextcloud; nur das Lesen und Schreiben der Objekte geht direkt an das CalDAV-Backend.
+Keine eigenen Datenbanktabellen, keine Hintergrundjobs, keine Aufrufe nach außen, keine öffentlichen Seiten, kein Datei-Upload. Die Admin-Einstellungen (Standardort, Kalender-Muster, Linktext, Feldschema) liegen in der App-Konfiguration von Nextcloud; sie werden beim Lesen und Schreiben bereinigt und in der Länge gedeckelt, das Schema streng geprüft (`lib/Service/Schema.php`). Setzbar über die Admin-Einstellungsseite oder `occ`. Welche Kalender ein Konto sieht und ob es schreiben darf, kommt aus der öffentlichen Kalender-Schnittstelle von Nextcloud; nur das Lesen und Schreiben der Objekte geht direkt an das CalDAV-Backend.
 
 ## Geheimnisse
 

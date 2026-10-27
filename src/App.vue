@@ -18,6 +18,7 @@
 				<TerminListe v-else
 					:kalender-liste="kalender"
 					:zustand="zustand"
+					:einstellungen="einstellungen"
 					@aendern="aendern"
 					@oeffnen="oeffnen" />
 			</main>

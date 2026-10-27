@@ -221,8 +221,12 @@ class KalenderService {
 		return !$geteilt || (int)($objekt['classification'] ?? 0) === self::KLASSE_OEFFENTLICH;
 	}
 
-	/** @return array<string,mixed> */
+	/** Kurzfassung für die Liste; die Spalten sind die Felder mit `inListe` aus dem Schema. @return array<string,mixed> */
 	private function kurz(int $kalenderId, string $objektUri, array $daten): array {
+		$felder = [];
+		foreach ($this->einstellungen->schema->listenFelder() as $feld) {
+			$felder[$feld['key']] = $daten[$feld['key']] ?? '';
+		}
 		return [
 			'kalender' => $kalenderId,
 			'objekt' => $objektUri,
@@ -232,9 +236,7 @@ class KalenderService {
 			'ganztags' => $daten['ganztags'],
 			'serie' => $daten['serie'],
 			'ort' => $daten['ort'],
-			'zustaendig' => $daten['zustaendig'],
-			'kontakt' => trim($daten['kontakt_organisation'] . ($daten['kontakt_name'] !== '' ? ' · ' . $daten['kontakt_name'] : ''), ' ·'),
-			'teilnehmende' => $daten['teilnehmende'],
+			'felder' => $felder,
 			'geplant' => $daten['geplant'],
 		];
 	}

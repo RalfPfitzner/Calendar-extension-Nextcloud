@@ -14,47 +14,18 @@ use Sabre\VObject\Reader;
 /**
  * Zuordnung der Planungsfelder zu Eigenschaften im Kalendertermin.
  *
- * Reine Umwandlung iCalendar <-> Array, ohne Nextcloud-Abhängigkeiten,
- * damit sie ohne Server testbar ist. Standardort und Linktext kommen aus den Einstellungen.
+ * Reine Umwandlung iCalendar <-> Array, ohne Nextcloud-Abhängigkeiten, damit sie ohne Server testbar ist.
+ * Welche Felder es gibt, sagt das Schema in den Einstellungen; Standardort und Linktext ebenso.
  */
 class Planung {
 	/** Präfix der eigenen Eigenschaften im VEVENT; der Rest des Namens entsteht aus dem Feldschlüssel. */
 	public const PRAEFIX = 'X-CALPLAN-';
 
-	/**
-	 * Feldschlüssel => X-Eigenschaft im Termin.
-	 * Die Schlüssel sind Teil des Datenformats: nie umbenennen, nur ergänzen.
-	 */
-	public const FELDER = [
-		'zustaendig' => 'X-CALPLAN-ZUSTAENDIG',
-		'zufahrt' => 'X-CALPLAN-ZUFAHRT',
-		'raum' => 'X-CALPLAN-RAUM',
-		'kontakt_organisation' => 'X-CALPLAN-KONTAKT-ORGANISATION',
-		'kontakt_name' => 'X-CALPLAN-KONTAKT-NAME',
-		'kontakt_telefon' => 'X-CALPLAN-KONTAKT-TELEFON',
-		'kontakt_email' => 'X-CALPLAN-KONTAKT-EMAIL',
-		'kontakt_rolle' => 'X-CALPLAN-KONTAKT-ROLLE',
-		'zielgruppe' => 'X-CALPLAN-ZIELGRUPPE',
-		'teilnehmende' => 'X-CALPLAN-TEILNEHMENDE',
-		'anforderungen' => 'X-CALPLAN-ANFORDERUNGEN',
-		'inhalte' => 'X-CALPLAN-INHALTE',
-		'ausstattung' => 'X-CALPLAN-AUSSTATTUNG',
-		'material' => 'X-CALPLAN-MATERIAL',
-		'betreuung' => 'X-CALPLAN-BETREUUNG',
-		'hinweise' => 'X-CALPLAN-HINWEISE',
-	];
+	/** Höchstlänge je Feld (Zeichen), damit niemand versehentlich riesige Termine erzeugt. Das Schema darf weniger erlauben. */
+	public const MAX_LAENGE = Schema::MAX_LAENGE;
 
-	/** Höchstlänge je Feld (Zeichen), damit niemand versehentlich riesige Termine erzeugt. */
-	public const MAX_LAENGE = 5000;
-
-	/**
-	 * Felder, die im Formular einzeilig sind (muss zu `mehrzeilig` in src/felder.js passen).
-	 * Zeilenumbrüche darin werden zu Leerzeichen, damit kein Titel mit Umbruch in der Kalender-App landet.
-	 */
-	public const EINZEILIG = [
-		'titel', 'zustaendig', 'kontakt_organisation', 'kontakt_name', 'kontakt_telefon',
-		'kontakt_email', 'kontakt_rolle', 'zielgruppe', 'teilnehmende',
-	];
+	/** Wert, mit dem ein angekreuztes Ja/Nein-Feld im Termin steht. */
+	public const JA = '1';
 
 	public function __construct(
 		private Einstellungen $einstellungen = new Einstellungen(),
@@ -108,9 +79,10 @@ class Planung {
 			'beschreibung' => (string)($termin->DESCRIPTION ?? ''),
 		];
 		$geplant = false;
-		foreach (self::FELDER as $feld => $eigenschaft) {
-			$wert = isset($termin->{$eigenschaft}) ? $termin->{$eigenschaft}->getValue() : '';
-			$daten[$feld] = $wert;
+		foreach ($this->einstellungen->schema->felder as $schluessel => $feld) {
+			$eigenschaft = self::eigenschaft($schluessel);
+			$wert = isset($termin->{$eigenschaft}) ? (string)$termin->{$eigenschaft}->getValue() : '';
+			$daten[$schluessel] = $feld['typ'] === 'checkbox' ? $wert !== '' : $wert;
 			$geplant = $geplant || $wert !== '';
 		}
 		$daten['geplant'] = $geplant;
@@ -149,8 +121,12 @@ class Planung {
 			if ($hauptTermin || (string)($ereignis->LOCATION ?? '') === $alterOrt) {
 				$this->setzen($ereignis, 'LOCATION', $ort);
 			}
-			foreach (self::FELDER as $feld => $eigenschaft) {
-				$this->setzen($ereignis, $eigenschaft, $planung[$feld]);
+			foreach ($this->einstellungen->schema->felder as $schluessel => $feld) {
+				$wert = $planung[$schluessel] ?? '';
+				if ($feld['typ'] === 'checkbox') {
+					$wert = $wert === true ? self::JA : '';
+				}
+				$this->setzen($ereignis, self::eigenschaft($schluessel), (string)$wert);
 			}
 			if ($link !== null) {
 				$this->linkEinfuegen($ereignis, $link);
@@ -162,39 +138,18 @@ class Planung {
 	}
 
 	/**
-	 * Prüft und bereinigt Formularwerte.
+	 * Prüft und bereinigt Formularwerte gegen das Schema: Typ, Pflicht, Länge, Optionen.
 	 *
 	 * @param array<string,mixed> $eingabe
-	 * @return array<string,mixed>
-	 * @throws PlanungException bei ungültiger Eingabe
+	 * @return array<string,mixed> Werte je Schlüssel; Ja/Nein-Felder als bool, alles andere als Text
+	 * @throws PlanungException bei ungültiger Eingabe (Code 400, Meldung nennt das Feld)
 	 */
 	public function pruefen(array $eingabe): array {
-		$text = function (string $feld) use ($eingabe): string {
-			$wert = $eingabe[$feld] ?? '';
-			if (!is_string($wert) && !is_int($wert)) {
-				throw new PlanungException("Feld „{$feld}“ ist kein Text");
-			}
-			$wert = str_replace("\r\n", "\n", (string)$wert);
-			if (in_array($feld, self::EINZEILIG, true)) {
-				// Umbrüche und Tabs zu einem Leerzeichen, sonstige Steuerzeichen raus.
-				$wert = (string)preg_replace('/[\r\n\t]+/', ' ', $wert);
-				$wert = (string)preg_replace('/\p{Cc}/u', '', $wert);
-			} else {
-				// Mehrzeilig: Umbruch und Tab bleiben, alle anderen Steuerzeichen raus.
-				$wert = (string)preg_replace('/[^\P{Cc}\n\t]/u', '', $wert);
-			}
-			$wert = trim($wert);
-			if (mb_strlen($wert) > self::MAX_LAENGE) {
-				throw new PlanungException("Feld „{$feld}“ ist zu lang (höchstens " . self::MAX_LAENGE . ' Zeichen)');
-			}
-			return $wert;
-		};
-
-		$planung = ['titel' => $text('titel')];
+		$planung = ['titel' => $this->text($eingabe, 'titel', 'Titel der Veranstaltung', true, self::MAX_LAENGE)];
 		if ($planung['titel'] === '') {
 			throw new PlanungException('Der Titel der Veranstaltung fehlt');
 		}
-		$planung['ort'] = $text('ort');
+		$planung['ort'] = $this->text($eingabe, 'ort', 'Ort', false, self::MAX_LAENGE);
 		if ($this->einstellungen->ortVorgabe === '') {
 			// Ohne Standardort gibt es nur das freie Ortsfeld; leer heißt: kein Ort.
 			$planung['ort_extern'] = $planung['ort'] !== '';
@@ -204,13 +159,80 @@ class Planung {
 				throw new PlanungException('Bei einem externen Ort fehlt die Adresse');
 			}
 		}
-		foreach (array_keys(self::FELDER) as $feld) {
-			$planung[$feld] = $text($feld);
-		}
-		if ($planung['kontakt_email'] !== '' && filter_var($planung['kontakt_email'], FILTER_VALIDATE_EMAIL) === false) {
-			throw new PlanungException('Die E-Mail-Adresse des Kontakts ist ungültig');
+		foreach ($this->einstellungen->schema->felder as $schluessel => $feld) {
+			$planung[$schluessel] = $this->feldPruefen($eingabe, $schluessel, $feld);
 		}
 		return $planung;
+	}
+
+	/** @param array{key:string,label:string,typ:string,pflicht:bool,maxlen:int,optionen:list<string>,inListe:bool} $feld */
+	private function feldPruefen(array $eingabe, string $schluessel, array $feld): string|bool {
+		$label = $feld['label'];
+		if ($feld['typ'] === 'checkbox') {
+			$wert = $eingabe[$schluessel] ?? false;
+			$ja = $wert === true || $wert === self::JA || $wert === 'true';
+			if ($feld['pflicht'] && !$ja) {
+				throw new PlanungException("„{$label}“ muss angekreuzt sein");
+			}
+			return $ja;
+		}
+		$wert = $this->text($eingabe, $schluessel, $label, in_array($feld['typ'], Schema::EINZEILIG, true), $feld['maxlen']);
+		if ($wert === '') {
+			if ($feld['pflicht']) {
+				throw new PlanungException("„{$label}“ fehlt");
+			}
+			return '';
+		}
+		switch ($feld['typ']) {
+			case 'email':
+				if (filter_var($wert, FILTER_VALIDATE_EMAIL) === false) {
+					throw new PlanungException("„{$label}“: die E-Mail-Adresse ist ungültig");
+				}
+				break;
+			case 'number':
+				if (preg_match('/^-?\d{1,15}([.,]\d{1,6})?$/', $wert) !== 1) {
+					throw new PlanungException("„{$label}“ muss eine Zahl sein");
+				}
+				break;
+			case 'select':
+				if (!in_array($wert, $feld['optionen'], true)) {
+					throw new PlanungException("„{$label}“: „" . mb_substr($wert, 0, 40) . '“ ist keine der Optionen');
+				}
+				break;
+			case 'date':
+				$datum = DateTimeImmutable::createFromFormat('!Y-m-d', $wert);
+				if ($datum === false || $datum->format('Y-m-d') !== $wert) {
+					throw new PlanungException("„{$label}“ muss ein Datum im Format JJJJ-MM-TT sein");
+				}
+				break;
+		}
+		return $wert;
+	}
+
+	/**
+	 * Textwert aus der Eingabe: ohne Steuerzeichen, einzeilig falls verlangt, getrimmt, Länge geprüft.
+	 *
+	 * @param array<string,mixed> $eingabe
+	 */
+	private function text(array $eingabe, string $schluessel, string $label, bool $einzeilig, int $maxLaenge): string {
+		$wert = $eingabe[$schluessel] ?? '';
+		if (!is_string($wert) && !is_int($wert) && !is_float($wert)) {
+			throw new PlanungException("„{$label}“ ist kein Text");
+		}
+		$wert = str_replace("\r\n", "\n", (string)$wert);
+		if ($einzeilig) {
+			// Umbrüche und Tabs zu einem Leerzeichen, sonstige Steuerzeichen raus.
+			$wert = (string)preg_replace('/[\r\n\t]+/', ' ', $wert);
+			$wert = (string)preg_replace('/\p{Cc}/u', '', $wert);
+		} else {
+			// Mehrzeilig: Umbruch und Tab bleiben, alle anderen Steuerzeichen raus.
+			$wert = (string)preg_replace('/[^\P{Cc}\n\t]/u', '', $wert);
+		}
+		$wert = trim($wert);
+		if (mb_strlen($wert) > $maxLaenge) {
+			throw new PlanungException("„{$label}“ ist zu lang (höchstens {$maxLaenge} Zeichen)");
+		}
+		return $wert;
 	}
 
 	/** Der Termin ohne RECURRENCE-ID (bei Serien die Serie selbst). */

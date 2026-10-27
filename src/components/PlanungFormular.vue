@@ -31,14 +31,10 @@
 			</NcNoteCard>
 
 			<fieldset :disabled="!termin.schreibbar || speichert">
-				<h3>1. Grunddaten</h3>
+				<h3>Termin</h3>
 				<label class="formular__feld">
 					<span>Titel der Veranstaltung</span>
-					<input v-model="werte.titel" type="text" required maxlength="5000">
-				</label>
-				<label v-for="feld in ABSCHNITTE[0].felder.slice(0, 1)" :key="feld.name" class="formular__feld">
-					<span>{{ feld.label }}</span>
-					<input v-model="werte[feld.name]" type="text" maxlength="5000">
+					<input v-model="werte.titel" type="text" required :maxlength="MAX_LAENGE">
 				</label>
 
 				<template v-if="ortVorgabe">
@@ -55,26 +51,49 @@
 					</div>
 					<label v-if="werte.ort_extern" class="formular__feld">
 						<span>Externer Ort – Adresse</span>
-						<textarea v-model="werte.ort" rows="2" required maxlength="5000" />
+						<textarea v-model="werte.ort" rows="2" required :maxlength="MAX_LAENGE" />
 					</label>
 				</template>
 				<label v-else class="formular__feld">
 					<span>Ort</span>
-					<textarea v-model="werte.ort" rows="2" maxlength="5000" />
+					<textarea v-model="werte.ort" rows="2" :maxlength="MAX_LAENGE" />
 				</label>
 
-				<label v-for="feld in ABSCHNITTE[0].felder.slice(1)" :key="feld.name" class="formular__feld">
-					<span>{{ feld.label }}</span>
-					<textarea v-model="werte[feld.name]" rows="3" maxlength="5000" />
-				</label>
-
-				<template v-for="abschnitt in ABSCHNITTE.slice(1)" :key="abschnitt.titel">
+				<template v-for="abschnitt in schema.abschnitte" :key="abschnitt.titel">
 					<h3>{{ abschnitt.titel }}</h3>
-					<label v-for="feld in abschnitt.felder" :key="feld.name" class="formular__feld">
-						<span>{{ feld.label }}</span>
-						<textarea v-if="feld.mehrzeilig" v-model="werte[feld.name]" rows="3" maxlength="5000" />
-						<input v-else v-model="werte[feld.name]" :type="feld.typ || 'text'" maxlength="5000">
-					</label>
+					<template v-for="feld in abschnitt.felder" :key="feld.key">
+						<label v-if="feld.typ === 'checkbox'" class="formular__wahl formular__wahl--feld">
+							<input v-model="werte[feld.key]" type="checkbox" :required="feld.pflicht">
+							{{ feld.label }}{{ feld.pflicht ? ' *' : '' }}
+						</label>
+						<label v-else class="formular__feld">
+							<span>{{ feld.label }}{{ feld.pflicht ? ' *' : '' }}</span>
+							<textarea v-if="feld.typ === 'textarea'"
+								v-model="werte[feld.key]"
+								rows="3"
+								:required="feld.pflicht"
+								:maxlength="feld.maxlen" />
+							<select v-else-if="feld.typ === 'select'" v-model="werte[feld.key]" :required="feld.pflicht">
+								<option value="">
+									–
+								</option>
+								<option v-for="option in feld.optionen" :key="option" :value="option">
+									{{ option }}
+								</option>
+							</select>
+							<input v-else-if="feld.typ === 'number'"
+								v-model="werte[feld.key]"
+								type="text"
+								inputmode="decimal"
+								:required="feld.pflicht"
+								:maxlength="feld.maxlen">
+							<input v-else
+								v-model="werte[feld.key]"
+								:type="feld.typ"
+								:required="feld.pflicht"
+								:maxlength="feld.maxlen">
+						</label>
+					</template>
 				</template>
 			</fieldset>
 
@@ -95,19 +114,21 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
-import { ABSCHNITTE, FELDNAMEN } from '../felder.js'
+import { MAX_LAENGE, alleFelder, feldnamen, leererWert } from '../felder.js'
 import { fehlertext, terminLaden, terminSpeichern } from '../api.js'
 import { zeitraumText } from '../datum.js'
 
 const props = defineProps({
 	kalender: { type: Number, required: true },
 	termin: { type: String, required: true },
-	/** Einstellungen der App (GET /api/einstellungen); ohne Standardort gibt es nur das freie Ortsfeld. */
+	/** Einstellungen der App (GET /api/einstellungen): Standardort und Feldschema. */
 	einstellungen: { type: Object, required: true },
 })
 const emit = defineEmits(['zurueck'])
 
 const ortVorgabe = computed(() => props.einstellungen.ort_vorgabe ?? '')
+const schema = computed(() => props.einstellungen.schema ?? { abschnitte: [] })
+const namen = computed(() => feldnamen(schema.value))
 const termin = ref(null)
 const werte = reactive({})
 const ladeFehler = ref('')
@@ -117,16 +138,19 @@ const speichert = ref(false)
 
 function uebernehmen(daten) {
 	termin.value = daten
-	for (const name of FELDNAMEN) {
-		werte[name] = daten[name]
+	for (const feld of alleFelder(schema.value)) {
+		werte[feld.key] = daten[feld.key] ?? leererWert(feld)
 	}
+	werte.titel = daten.titel
+	werte.ort_extern = daten.ort_extern
+	werte.ort = daten.ort
 	// Beim Standardort bleibt das Adressfeld leer, damit der Umschalter auf extern sauber startet.
 	if (ortVorgabe.value && !daten.ort_extern) {
 		werte.ort = ''
 	}
 }
 
-const geaendert = computed(() => termin.value !== null && FELDNAMEN.some((name) => {
+const geaendert = computed(() => termin.value !== null && namen.value.some((name) => {
 	if (name === 'ort') {
 		if (!ortVorgabe.value) {
 			return werte.ort !== termin.value.ort
@@ -169,7 +193,7 @@ async function speichern() {
 	fehler.value = ''
 	meldung.value = ''
 	try {
-		const planung = Object.fromEntries(FELDNAMEN.map((name) => [name, werte[name]]))
+		const planung = Object.fromEntries(namen.value.map((name) => [name, werte[name]]))
 		if (!ortVorgabe.value) {
 			// Ohne Standardort entscheidet allein das Ortsfeld; der Server prüft das ebenso.
 			planung.ort_extern = planung.ort.trim() !== ''
@@ -226,7 +250,7 @@ async function speichern() {
 			margin-bottom: 4px;
 		}
 
-		input[type=text], input[type=tel], input[type=email], textarea {
+		input, select, textarea {
 			width: 100%;
 			margin: 0;
 		}
@@ -244,6 +268,11 @@ async function speichern() {
 
 		input {
 			margin: 0;
+		}
+
+		&--feld {
+			font-weight: bold;
+			margin-bottom: 12px;
 		}
 	}
 

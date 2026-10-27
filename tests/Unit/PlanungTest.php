@@ -9,6 +9,7 @@ use DateTimeZone;
 use OCA\CalendarPlanning\Service\Einstellungen;
 use OCA\CalendarPlanning\Service\Planung;
 use OCA\CalendarPlanning\Service\PlanungException;
+use OCA\CalendarPlanning\Service\Schema;
 use PHPUnit\Framework\TestCase;
 use Sabre\VObject\Reader;
 
@@ -30,16 +31,18 @@ class PlanungTest extends TestCase {
 	}
 
 	private function eingabe(array $werte = [], ?Planung $planung = null): array {
-		$leer = array_fill_keys(array_keys(Planung::FELDER), '');
-		return ($planung ?? $this->planung)->pruefen($werte + ['titel' => 'Lötworkshop', 'ort_extern' => false, 'ort' => ''] + $leer);
+		return ($planung ?? $this->planung)->pruefen($werte + ['titel' => 'Lötworkshop', 'ort_extern' => false, 'ort' => '']);
+	}
+
+	/** Planung mit einem Schema aus genau diesen Feldern. */
+	private static function mitFeldern(array ...$felder): Planung {
+		$schema = Schema::ausArray(['abschnitte' => [['titel' => 'Test', 'felder' => $felder]]]);
+		return new Planung(new Einstellungen(self::ORT_VORGABE, '', Einstellungen::LINK_TEXT_VORGABE, $schema));
 	}
 
 	public function testEigenschaftsnamenFolgenDemSchluessel(): void {
 		$this->assertSame('X-CALPLAN-KONTAKT-ORGANISATION', Planung::eigenschaft('kontakt_organisation'));
-		foreach (Planung::FELDER as $schluessel => $eigenschaft) {
-			$this->assertSame(Planung::eigenschaft($schluessel), $eigenschaft, "Eigenschaft zu {$schluessel}");
-			$this->assertMatchesRegularExpression('/^X-CALPLAN-[A-Z0-9-]+$/', $eigenschaft);
-		}
+		$this->assertSame('X-CALPLAN-A1', Planung::eigenschaft('a1'));
 	}
 
 	public function testLesenOhnePlanungSetztOrtVorgabe(): void {
@@ -51,6 +54,7 @@ class PlanungTest extends TestCase {
 		$this->assertSame('2026-11-05T14:00:00+01:00', $daten['beginn']);
 		$this->assertSame('2026-11-05T17:00:00+01:00', $daten['ende']);
 		$this->assertSame('', $daten['hinweise']);
+		$this->assertCount(16, array_intersect_key($daten, Schema::vorgabe()->felder));
 	}
 
 	public function testSchreibenUndLesenErgibtDieselbenWerte(): void {
@@ -72,6 +76,7 @@ class PlanungTest extends TestCase {
 		$this->assertSame("Zeile 1\nZeile 2; mit, Komma und \\ Backslash", $daten['hinweise']);
 		$this->assertSame('24', $daten['teilnehmende']);
 		$this->assertStringContainsString('X-CALPLAN-ZUSTAENDIG:Eva', $neu);
+		$this->assertStringNotContainsString('X-MSP-', $neu);
 	}
 
 	public function testFremdeEigenschaftenUndZeitenBleibenErhalten(): void {
@@ -88,6 +93,15 @@ class PlanungTest extends TestCase {
 		$ohne = $this->planung->schreiben($mit, $this->eingabe(['raum' => '']), null);
 		$this->assertStringContainsString('X-CALPLAN-RAUM', $mit);
 		$this->assertStringNotContainsString('X-CALPLAN-RAUM', $ohne);
+	}
+
+	public function testFelderAusserhalbDesSchemasBleibenUnberuehrt(): void {
+		// Ein Feld, das das aktuelle Schema nicht kennt (z. B. nach einer Schema-Änderung), wird weder gelesen noch gelöscht.
+		$ics = self::ics("X-CALPLAN-ALTESFELD:bleibt\r\n");
+		$daten = $this->planung->lesen($ics);
+		$this->assertArrayNotHasKey('altesfeld', $daten);
+		$neu = $this->planung->schreiben($ics, $this->eingabe(['raum' => 'x']), null);
+		$this->assertStringContainsString('X-CALPLAN-ALTESFELD:bleibt', $neu);
 	}
 
 	public function testInternerOrtSchreibtDieVorgabe(): void {
@@ -138,7 +152,9 @@ class PlanungTest extends TestCase {
 		$this->assertSame(100, mb_strlen($e->kalenderMuster));
 		// Ohne Erkennungszeichen würde jede Zeile der Beschreibung als alter Link gelten; deshalb die Vorgabe.
 		$this->assertSame(Einstellungen::LINK_TEXT_VORGABE, $e->linkText);
-		$this->assertSame(['ort_vorgabe' => 'Vereins heim'], $e->fuerOberflaeche());
+		$this->assertSame('Vereins heim', $e->fuerOberflaeche()['ort_vorgabe']);
+		$this->assertSame(Schema::vorgabe()->alsArray(), $e->fuerOberflaeche()['schema']);
+		$this->assertSame(['ort_vorgabe' => 'Vereins heim', 'kalender_muster' => str_repeat('x', 100), 'link_text' => 'Planung öffnen:'], $e->vorgaben());
 	}
 
 	public function testSerieErsterTerminImZeitraumUndAusnahmen(): void {
@@ -202,6 +218,14 @@ class PlanungTest extends TestCase {
 			$this->fail('zu lang nicht erkannt');
 		} catch (PlanungException $e) {
 			$this->assertStringContainsString('zu lang', $e->getMessage());
+			$this->assertStringContainsString('Hinweise', $e->getMessage(), 'die Meldung nennt das Feld');
+		}
+		// Das Schema darf weniger erlauben als die Obergrenze.
+		try {
+			$this->eingabe(['teilnehmende' => str_repeat('9', 101)]);
+			$this->fail('maxlen des Schemas nicht beachtet');
+		} catch (PlanungException $e) {
+			$this->assertStringContainsString('höchstens 100', $e->getMessage());
 		}
 		$this->expectException(PlanungException::class);
 		$this->eingabe(['hinweise' => ['kein', 'text']]);
@@ -222,6 +246,71 @@ class PlanungTest extends TestCase {
 		$this->assertSame('Eva Muster', $planung['kontakt_name']);
 		// Mehrzeilig: Umbruch und Tab bleiben, andere Steuerzeichen verschwinden.
 		$this->assertSame("Zeile 1\nZeile 2\tTabEnde", $planung['hinweise']);
-		$this->assertEmpty(array_diff(Planung::EINZEILIG, ['titel', ...array_keys(Planung::FELDER)]), 'EINZEILIG nennt nur bekannte Felder');
+	}
+
+	public function testZahlenfeld(): void {
+		$planung = self::mitFeldern(['key' => 'teilnehmende', 'label' => 'Teilnehmende', 'typ' => 'number']);
+		$this->assertSame('20', $this->eingabe(['teilnehmende' => ' 20 '], $planung)['teilnehmende']);
+		$this->assertSame('12,5', $this->eingabe(['teilnehmende' => '12,5'], $planung)['teilnehmende']);
+		$this->assertSame('7', $this->eingabe(['teilnehmende' => 7], $planung)['teilnehmende']);
+		$this->assertSame('', $this->eingabe(['teilnehmende' => ''], $planung)['teilnehmende']);
+		try {
+			$this->eingabe(['teilnehmende' => 'ca. 20'], $planung);
+			$this->fail('„ca. 20“ nicht abgelehnt');
+		} catch (PlanungException $e) {
+			$this->assertSame(400, $e->getCode());
+			$this->assertStringContainsString('Teilnehmende', $e->getMessage());
+			$this->assertStringContainsString('Zahl', $e->getMessage());
+		}
+	}
+
+	public function testAuswahlfeld(): void {
+		$planung = self::mitFeldern(['key' => 'art', 'label' => 'Art', 'typ' => 'select', 'optionen' => ['Kurs', 'Offen']]);
+		$this->assertSame('Kurs', $this->eingabe(['art' => 'Kurs'], $planung)['art']);
+		$this->assertSame('', $this->eingabe([], $planung)['art']);
+		$this->expectException(PlanungException::class);
+		$this->expectExceptionMessage('keine der Optionen');
+		$this->eingabe(['art' => 'kurs'], $planung);
+	}
+
+	public function testJaNeinFeld(): void {
+		$planung = self::mitFeldern(['key' => 'einweisung', 'label' => 'Einweisung', 'typ' => 'checkbox']);
+		$ja = $this->eingabe(['einweisung' => true], $planung);
+		$this->assertTrue($ja['einweisung']);
+		$this->assertFalse($this->eingabe(['einweisung' => 'ja'], $planung)['einweisung'], 'nur true, "1" oder "true" zählen');
+		$this->assertTrue($this->eingabe(['einweisung' => '1'], $planung)['einweisung']);
+
+		$ics = $planung->schreiben(self::ics(), $ja, null);
+		$this->assertStringContainsString('X-CALPLAN-EINWEISUNG:1', $ics);
+		$this->assertTrue($planung->lesen($ics)['einweisung']);
+		$this->assertTrue($planung->lesen($ics)['geplant']);
+		$nein = $planung->schreiben($ics, $this->eingabe(['einweisung' => false], $planung), null);
+		$this->assertStringNotContainsString('X-CALPLAN-EINWEISUNG', $nein);
+		$this->assertFalse($planung->lesen($nein)['einweisung']);
+
+		$pflicht = self::mitFeldern(['key' => 'einweisung', 'label' => 'Einweisung', 'typ' => 'checkbox', 'pflicht' => true]);
+		$this->expectException(PlanungException::class);
+		$this->expectExceptionMessage('angekreuzt');
+		$this->eingabe(['einweisung' => false], $pflicht);
+	}
+
+	public function testDatumsfeldUndPflicht(): void {
+		$planung = self::mitFeldern(['key' => 'frist', 'label' => 'Anmeldefrist', 'typ' => 'date', 'pflicht' => true]);
+		$this->assertSame('2026-11-01', $this->eingabe(['frist' => '2026-11-01'], $planung)['frist']);
+		try {
+			$this->eingabe(['frist' => '2026-13-01'], $planung);
+			$this->fail('ungültiges Datum nicht erkannt');
+		} catch (PlanungException $e) {
+			$this->assertStringContainsString('Anmeldefrist', $e->getMessage());
+		}
+		$this->expectException(PlanungException::class);
+		$this->expectExceptionMessage('„Anmeldefrist“ fehlt');
+		$this->eingabe(['frist' => ''], $planung);
+	}
+
+	public function testUnbekannteEingabefelderWerdenIgnoriert(): void {
+		$planung = $this->eingabe(['fremd' => 'x', 'END:VEVENT' => 'y']);
+		$this->assertArrayNotHasKey('fremd', $planung);
+		$this->assertArrayNotHasKey('END:VEVENT', $planung);
 	}
 }

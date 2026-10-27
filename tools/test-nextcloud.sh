@@ -52,5 +52,9 @@ occ app:enable calendar_planning
 occ config:app:set calendar_planning ort_vorgabe --value 'Vereinsheim' >/dev/null
 occ config:app:set calendar_planning kalender_muster --value 'Planung' >/dev/null
 docker exec -u www-data -e OC_PASS="$EVA_PASS" "$NAME" php occ user:add --password-from-env eva >/dev/null
+# Nextcloud-Oberfläche auf Englisch, damit die Bezeichnungen der Kalender-App in den Tests fest sind
+# (sonst speichert Nextcloud die Browsersprache des ersten Logins am Konto).
+occ user:setting admin core lang en
+occ user:setting eva core lang en
 NC_URL="http://localhost:$PORT" NC_USER=admin NC_PASS="$ADMIN_PASS" NC_EVA_PASS=x "$APP/tools/testdaten.sh"
 echo "Bereit: http://localhost:$PORT (admin / $ADMIN_PASS, eva / $EVA_PASS)"

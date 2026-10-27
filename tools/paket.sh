@@ -10,7 +10,7 @@ paket_version=$(node -p "require('./package.json').version")
 
 npm run build
 rm -rf build && mkdir -p build/calendar_planning
-cp -r appinfo lib templates img css LICENSE README.md CHANGELOG.md build/calendar_planning/
+cp -r appinfo lib templates img css schema LICENSE README.md CHANGELOG.md build/calendar_planning/
 mkdir build/calendar_planning/js
 cp js/*.mjs build/calendar_planning/js/
 tar -czf "build/calendar_planning-$version.tar.gz" -C build --owner=0 --group=0 calendar_planning

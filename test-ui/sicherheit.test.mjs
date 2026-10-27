@@ -69,7 +69,8 @@ before(async () => {
 	privaterKalender = kalender.find((k) => k.name !== KALENDER_NAME)
 	assert.ok(planungskalender && privaterKalender, 'Test braucht den Planungskalender und einen zweiten, nicht geteilten Kalender')
 
-	browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined })
+	// SICHTBAR=1 öffnet ein echtes Browserfenster und bremst die Schritte, um zuzuschauen.
+	browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, headless: !process.env.SICHTBAR, slowMo: process.env.SICHTBAR ? 300 : 0 })
 	seite = await browser.newPage()
 	await seite.goto(BASIS + '/login')
 	await seite.fill('#user', NUTZER)
@@ -231,8 +232,65 @@ test('12 Antwort-Header der App-Seite: CSP mit Nonce, nosniff, no-referrer, kein
 	assert.equal(header['x-frame-options'], 'SAMEORIGIN')
 })
 
-test('13 Einstellungen: lesbar für jedes Konto, nur der Standardort wird verraten', async () => {
+test('13 Einstellungen: lesbar für jedes Konto, nur Standardort und Feldschema werden verraten', async () => {
 	const antwort = await eva.get(`${API}/einstellungen`)
 	assert.equal(antwort.status(), 200)
-	assert.deepEqual(await json(antwort), { ort_vorgabe: 'Vereinsheim' })
+	const daten = await json(antwort)
+	assert.deepEqual(Object.keys(daten).sort(), ['ort_vorgabe', 'schema'])
+	assert.equal(daten.ort_vorgabe, 'Vereinsheim')
+	assert.equal(daten.schema.abschnitte.length, 5)
+})
+
+test('14 Schema-Routen: nur Admins; eva bekommt 403, Besucher 401', async () => {
+	for (const [methode, pfad] of [['get', '/schema'], ['put', '/schema'], ['get', '/admin/einstellungen'], ['put', '/admin/einstellungen']]) {
+		const antwort = await eva[methode](API + pfad, methode === 'put' ? { data: {} } : undefined)
+		assert.equal(antwort.status(), 403, `eva ${methode.toUpperCase()} ${pfad}`)
+	}
+	const ohne = await request.newContext({ baseURL: BASIS, extraHTTPHeaders: { Accept: 'application/json', 'OCS-APIRequest': 'true' } })
+	assert.equal((await ohne.get(`${API}/schema`)).status(), 401)
+	await ohne.dispose()
+	// Auch die Browser-Sitzung eines Admins braucht das CSRF-Token.
+	assert.equal((await seite.request.put(BASIS + API + '/schema', { data: { schema: {} } })).status(), 412)
+})
+
+test('15 Schema-Härte: feindliche Schlüssel und zu viele Felder werden abgelehnt, das Schema bleibt', async () => {
+	const vorher = (await json(await admin.get(`${API}/schema`))).schema
+	const feld = (key, extra = {}) => ({ key, label: 'Feld ' + key, typ: 'text', ...extra })
+	const faelle = [
+		[{ abschnitte: [{ titel: 'T', felder: [feld('END:VEVENT')] }] }, /Ungültiger Schlüssel/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('summary\r\nATTENDEE')] }] }, /Ungültiger Schlüssel/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('titel')] }] }, /reserviert/],
+		[{ abschnitte: [{ titel: 'T', felder: Array.from({ length: 51 }, (_, i) => feld(`f${i}`)) }] }, /Höchstens 50 Felder/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('a', { maxlen: 999999 })] }] }, /maxlen/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('a', { typ: 'html' })] }] }, /unbekannten Typ/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('a', { label: '<img src=x onerror=alert(1)>'.repeat(10) })] }] }, /zu lang/],
+		[{ abschnitte: 'kaputt' }, /Liste/],
+	]
+	for (const [schema, muster] of faelle) {
+		const antwort = await admin.put(`${API}/schema`, { data: { schema } })
+		assert.equal(antwort.status(), 400, JSON.stringify(schema).slice(0, 80))
+		assert.match((await json(antwort)).fehler, muster)
+	}
+	assert.deepEqual((await json(await admin.get(`${API}/schema`))).schema, vorher)
+	// Bezeichnungen sind Text, kein HTML: der Server speichert sie unverändert, die Oberfläche escaped sie.
+	const xss = await admin.put(`${API}/schema`, { data: { schema: { abschnitte: [{ titel: '<b>T</b>', felder: [feld('a', { label: '<script>alert(1)</script>' })] }] } } })
+	assert.equal(xss.status(), 200)
+	assert.equal((await json(xss)).schema.abschnitte[0].felder[0].label, '<script>alert(1)</script>')
+	await seite.goto(BASIS + '/index.php/apps/calendar_planning/?kalender=' + planungskalender.id + '&termin=workshop-1.ics')
+	await seite.getByText('<script>alert(1)</script>').waitFor()
+	assert.equal(await seite.locator('form script').count(), 0)
+	assert.equal((await admin.put(`${API}/schema`, { data: { schema: vorher } })).status(), 200)
+})
+
+test('16 Admin-Vorgaben: Steuerzeichen und Überlänge werden bereinigt, falscher Typ abgelehnt', async () => {
+	const vorher = await json(await admin.get(`${API}/admin/einstellungen`))
+	const antwort = await admin.put(`${API}/admin/einstellungen`, { data: { ort_vorgabe: "Halle\r\nSUMMARY:x\x00", kalender_muster: 'x'.repeat(300), link_text: '' } })
+	assert.equal(antwort.status(), 200)
+	const daten = await json(antwort)
+	assert.equal(daten.ort_vorgabe, 'Halle SUMMARY:x')
+	assert.equal(daten.kalender_muster.length, 100)
+	assert.equal(daten.link_text, 'Planung öffnen:')
+	assert.equal((await admin.put(`${API}/admin/einstellungen`, { data: { ort_vorgabe: ['kein', 'text'] } })).status(), 400)
+	assert.equal((await admin.put(`${API}/admin/einstellungen`, { data: vorher })).status(), 200)
+	assert.deepEqual(await json(await admin.get(`${API}/admin/einstellungen`)), vorher)
 })

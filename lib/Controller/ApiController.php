@@ -38,7 +38,7 @@ class ApiController extends Controller {
 		parent::__construct(Application::APP_ID, $request);
 	}
 
-	/** Die Einstellungen, die die Oberfläche braucht (Standardort). */
+	/** Die Einstellungen, die die Oberfläche braucht: Standardort und Feldschema. */
 	#[NoAdminRequired]
 	public function einstellungen(): JSONResponse {
 		return $this->ausfuehren(fn (string $uid) => $this->einstellungen->fuerOberflaeche());
