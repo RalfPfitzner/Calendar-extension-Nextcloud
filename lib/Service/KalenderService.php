@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace OCA\MspPlanung\Service;
+namespace OCA\CalendarPlanning\Service;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use OCA\CalendarPlanning\AppInfo\Application;
 use OCA\DAV\CalDAV\CalDavBackend;
-use OCA\MspPlanung\AppInfo\Application;
 use OCP\Calendar\ICalendar;
 use OCP\Calendar\ICalendarIsShared;
 use OCP\Calendar\ICalendarIsWritable;
@@ -24,9 +24,6 @@ use OCP\IURLGenerator;
  * kein Ändern bestehender Termine anbietet.
  */
 class KalenderService {
-	/** Wird beim Vorbelegen der Kalenderauswahl gesucht. */
-	private const KALENDER_VORGABE = 'MSP';
-
 	/** Klassifizierung „öffentlich“ im CalDAV-Backend. */
 	private const KLASSE_OEFFENTLICH = 0;
 
@@ -36,6 +33,7 @@ class KalenderService {
 		private IURLGenerator $urlGenerator,
 		private IUserConfig $userConfig,
 		private Planung $planung,
+		private Einstellungen $einstellungen,
 	) {
 	}
 
@@ -193,9 +191,13 @@ class KalenderService {
 				return $gespeichert;
 			}
 		}
-		foreach ($liste as $eintrag) {
-			if (stripos($eintrag['name'], self::KALENDER_VORGABE) !== false) {
-				return $eintrag['id'];
+		// Vorbelegung über das Namensmuster aus den Einstellungen; ohne Muster der erste Kalender.
+		$muster = $this->einstellungen->kalenderMuster;
+		if ($muster !== '') {
+			foreach ($liste as $eintrag) {
+				if (mb_stripos($eintrag['name'], $muster) !== false) {
+					return $eintrag['id'];
+				}
 			}
 		}
 		return $liste[0]['id'] ?? null;
@@ -238,7 +240,7 @@ class KalenderService {
 	}
 
 	public static function zeitraum(?string $von, ?string $bis): array {
-		// Der Makerspace plant in deutscher Zeit; Tagesgrenzen danach richten.
+		// Tagesgrenzen in deutscher Zeit; die App ist bisher einsprachig deutsch (siehe docs/KONZEPT.md, „Offen“).
 		$zone = new DateTimeZone('Europe/Berlin');
 		$start = self::datum($von) ?? new DateTimeImmutable('today -30 days', $zone);
 		// „bis“ zählt mit: der Zeitraum endet am Ende dieses Tages.

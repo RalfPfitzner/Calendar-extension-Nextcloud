@@ -41,20 +41,26 @@
 					<input v-model="werte[feld.name]" type="text" maxlength="5000">
 				</label>
 
-				<div class="formular__feld" role="radiogroup" aria-label="Ort">
+				<template v-if="ortVorgabe">
+					<div class="formular__feld" role="radiogroup" aria-label="Ort">
+						<span>Ort</span>
+						<label class="formular__wahl">
+							<input v-model="werte.ort_extern" type="radio" :value="false">
+							{{ ortVorgabe }}
+						</label>
+						<label class="formular__wahl">
+							<input v-model="werte.ort_extern" type="radio" :value="true">
+							Externer Ort
+						</label>
+					</div>
+					<label v-if="werte.ort_extern" class="formular__feld">
+						<span>Externer Ort – Adresse</span>
+						<textarea v-model="werte.ort" rows="2" required maxlength="5000" />
+					</label>
+				</template>
+				<label v-else class="formular__feld">
 					<span>Ort</span>
-					<label class="formular__wahl">
-						<input v-model="werte.ort_extern" type="radio" :value="false">
-						{{ ORT_VORGABE }}
-					</label>
-					<label class="formular__wahl">
-						<input v-model="werte.ort_extern" type="radio" :value="true">
-						Externer Ort
-					</label>
-				</div>
-				<label v-if="werte.ort_extern" class="formular__feld">
-					<span>Externer Ort – Adresse</span>
-					<textarea v-model="werte.ort" rows="2" required maxlength="5000" />
+					<textarea v-model="werte.ort" rows="2" maxlength="5000" />
 				</label>
 
 				<label v-for="feld in ABSCHNITTE[0].felder.slice(1)" :key="feld.name" class="formular__feld">
@@ -89,16 +95,19 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
-import { ABSCHNITTE, FELDNAMEN, ORT_VORGABE } from '../felder.js'
+import { ABSCHNITTE, FELDNAMEN } from '../felder.js'
 import { fehlertext, terminLaden, terminSpeichern } from '../api.js'
 import { zeitraumText } from '../datum.js'
 
 const props = defineProps({
 	kalender: { type: Number, required: true },
 	termin: { type: String, required: true },
+	/** Einstellungen der App (GET /api/einstellungen); ohne Standardort gibt es nur das freie Ortsfeld. */
+	einstellungen: { type: Object, required: true },
 })
 const emit = defineEmits(['zurueck'])
 
+const ortVorgabe = computed(() => props.einstellungen.ort_vorgabe ?? '')
 const termin = ref(null)
 const werte = reactive({})
 const ladeFehler = ref('')
@@ -111,14 +120,17 @@ function uebernehmen(daten) {
 	for (const name of FELDNAMEN) {
 		werte[name] = daten[name]
 	}
-	// Bei internem Ort bleibt das Adressfeld leer, damit der Umschalter auf extern sauber startet.
-	if (!daten.ort_extern) {
+	// Beim Standardort bleibt das Adressfeld leer, damit der Umschalter auf extern sauber startet.
+	if (ortVorgabe.value && !daten.ort_extern) {
 		werte.ort = ''
 	}
 }
 
 const geaendert = computed(() => termin.value !== null && FELDNAMEN.some((name) => {
 	if (name === 'ort') {
+		if (!ortVorgabe.value) {
+			return werte.ort !== termin.value.ort
+		}
 		return werte.ort_extern && werte.ort !== (termin.value.ort_extern ? termin.value.ort : '')
 	}
 	return werte[name] !== termin.value[name]
@@ -158,6 +170,10 @@ async function speichern() {
 	meldung.value = ''
 	try {
 		const planung = Object.fromEntries(FELDNAMEN.map((name) => [name, werte[name]]))
+		if (!ortVorgabe.value) {
+			// Ohne Standardort entscheidet allein das Ortsfeld; der Server prüft das ebenso.
+			planung.ort_extern = planung.ort.trim() !== ''
+		}
 		const gespeichert = await terminSpeichern(props.kalender, props.termin, termin.value.etag, planung)
 		uebernehmen(gespeichert)
 		// Erst nach dem Übernehmen der neuen Daten melden, sonst überschreibt das Neuladen die Meldung.

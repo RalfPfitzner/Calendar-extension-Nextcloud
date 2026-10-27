@@ -3,9 +3,20 @@
 ## [Unveröffentlicht]
 
 ### Hinweise zum Update
+- **Umbau zur organisationsneutralen App „Kalender-Planung“.** App-ID `calendar_planning` statt `msp_planung`, Namespace
+  `OCA\CalendarPlanning`, Eigenschaften im Termin `X-CALPLAN-…` statt `X-MSP-…`. Die App war bis dahin nirgends
+  installiert, deshalb gibt es keinen Rückfall auf die alten Namen; ein altes Paket `msp_planung` vorher mit
+  `occ app:remove msp_planung` entfernen. Der nächste Release wird 1.0.0.
+- Standardort und Kalender-Vorbelegung stehen nicht mehr im Code, sondern in den Admin-Einstellungen
+  (`occ config:app:set calendar_planning ort_vorgabe --value …`, `kalender_muster`, `link_text`; siehe README).
+  Ohne Einstellungen: freies Ortsfeld, erster Kalender vorbelegt.
 - Läuft jetzt auch auf Nextcloud 35 (`max-version` 35). Auf Nextcloud 34 ändert sich nichts.
 
 ### Geändert
+- Feld „Benötigte Maschinen / Tools“ heißt „Benötigte Ausstattung / Technik“ (Schlüssel `ausstattung`), Abschnitt 4
+  „Inhalte & Ausstattung“. Alle Namen, Texte und Testdaten sind frei von Organisationsbezügen; die Anforderungen des
+  ersten Nutzers liegen unverändert in `docs/historie/info.md`.
+- Neue Route `GET /api/einstellungen` liefert der Oberfläche den Standardort.
 - `gate` wartet jetzt auch auf `abhaengigkeiten` (dependency-review): Eine neue verwundbare Abhängigkeit in einem
   Pull Request lässt den Pflicht-Check scheitern; bei push und im Release ist der übersprungene Job erlaubt.
 - `appinfo/info.xml` erlaubt Nextcloud 34 bis 35. Gegen Nextcloud 35.0.2 mit Kalender-App 6.6.4 geprüft: die vier
@@ -25,10 +36,15 @@
 - `composer.json` verlangt PHP 8.2 (Minimum von Nextcloud 34, vorher stand 8.1); die Entwicklungsabhängigkeiten
   lösen gegen PHP 8.3 auf.
 - Der Release-Workflow attestiert das Paket (Build-Provenance über Sigstore) und schreibt die SHA-256-Summe in die
-  Release-Notes. Prüfen mit `gh attestation verify msp_planung-<version>.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
+  Release-Notes. Prüfen mit `gh attestation verify calendar_planning-<version>.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
 - Die CI prüft die Laufzeit-Abhängigkeiten des Bundles mit `npm audit` (ab Schwere „high“) bei jedem Lauf.
 
 ### Hinzugefügt
+- `lib/Service/Einstellungen.php` und `EinstellungenLader.php`: Admin-Einstellungen über `OCP\IAppConfig`, beim Lesen
+  bereinigt (einzeilig, ohne Steuerzeichen, Länge gedeckelt).
+- `test-ui/sicherheit.test.mjs`: die Live-Prüfungen des Sicherheits-Audits vom 27.10.2026 (Anmeldung, CSRF, fremde
+  Kalender, private Termine, Nur-Lese-Freigabe, iCalendar-Injection, Eingabegrenzen, ETag, Host-Header, Antwort-Header)
+  laufen jetzt in der CI gegen beide Nextcloud-Versionen.
 - `tools/api-check.sh` und `phpstan.neon`: PHPStan (Level 6) gegen `nextcloud/ocp` in genau der geprüften Version plus
   `CalDavBackend` und `CalendarImpl` aus dem Server-Repo. Die CI fährt das für 34.0.5 und 35.0.2; ein Wechsel der
   Nextcloud-Schnittstellen fällt damit in der CI auf, nicht erst auf der Instanz.

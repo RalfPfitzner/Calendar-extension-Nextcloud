@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace OCA\MspPlanung\Controller;
+namespace OCA\CalendarPlanning\Controller;
 
-use OCA\MspPlanung\AppInfo\Application;
+use OCA\CalendarPlanning\AppInfo\Application;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;

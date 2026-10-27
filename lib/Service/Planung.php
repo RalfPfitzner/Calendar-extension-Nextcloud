@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\MspPlanung\Service;
+namespace OCA\CalendarPlanning\Service;
 
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -12,39 +12,36 @@ use Sabre\VObject\Component\VEvent;
 use Sabre\VObject\Reader;
 
 /**
- * Zuordnung der Felder der Word-Vorlage zu Eigenschaften im Kalendertermin.
+ * Zuordnung der Planungsfelder zu Eigenschaften im Kalendertermin.
  *
  * Reine Umwandlung iCalendar <-> Array, ohne Nextcloud-Abhängigkeiten,
- * damit sie ohne Server testbar ist.
+ * damit sie ohne Server testbar ist. Standardort und Linktext kommen aus den Einstellungen.
  */
 class Planung {
-	/** Vorgabe für den Ort, wenn nichts anderes eingetragen ist. */
-	public const ORT_VORGABE = 'MakerSpace Bendorf';
-
-	/** Erkennungszeichen des Links in der Beschreibung. */
-	public const LINK_TEXT = 'Planung öffnen: ';
+	/** Präfix der eigenen Eigenschaften im VEVENT; der Rest des Namens entsteht aus dem Feldschlüssel. */
+	public const PRAEFIX = 'X-CALPLAN-';
 
 	/**
-	 * Feldname im Formular => X-Eigenschaft im Termin.
-	 * Die Namen sind Teil des Datenformats: nie umbenennen, nur ergänzen.
+	 * Feldschlüssel => X-Eigenschaft im Termin.
+	 * Die Schlüssel sind Teil des Datenformats: nie umbenennen, nur ergänzen.
 	 */
 	public const FELDER = [
-		'zustaendig' => 'X-MSP-ZUSTAENDIG',
-		'zufahrt' => 'X-MSP-ZUFAHRT',
-		'raum' => 'X-MSP-RAUM',
-		'kontakt_organisation' => 'X-MSP-KONTAKT-ORGANISATION',
-		'kontakt_name' => 'X-MSP-KONTAKT-NAME',
-		'kontakt_telefon' => 'X-MSP-KONTAKT-TELEFON',
-		'kontakt_email' => 'X-MSP-KONTAKT-EMAIL',
-		'kontakt_rolle' => 'X-MSP-KONTAKT-ROLLE',
-		'zielgruppe' => 'X-MSP-ZIELGRUPPE',
-		'teilnehmende' => 'X-MSP-TEILNEHMENDE',
-		'anforderungen' => 'X-MSP-ANFORDERUNGEN',
-		'inhalte' => 'X-MSP-INHALTE',
-		'maschinen' => 'X-MSP-MASCHINEN',
-		'material' => 'X-MSP-MATERIAL',
-		'betreuung' => 'X-MSP-BETREUUNG',
-		'hinweise' => 'X-MSP-HINWEISE',
+		'zustaendig' => 'X-CALPLAN-ZUSTAENDIG',
+		'zufahrt' => 'X-CALPLAN-ZUFAHRT',
+		'raum' => 'X-CALPLAN-RAUM',
+		'kontakt_organisation' => 'X-CALPLAN-KONTAKT-ORGANISATION',
+		'kontakt_name' => 'X-CALPLAN-KONTAKT-NAME',
+		'kontakt_telefon' => 'X-CALPLAN-KONTAKT-TELEFON',
+		'kontakt_email' => 'X-CALPLAN-KONTAKT-EMAIL',
+		'kontakt_rolle' => 'X-CALPLAN-KONTAKT-ROLLE',
+		'zielgruppe' => 'X-CALPLAN-ZIELGRUPPE',
+		'teilnehmende' => 'X-CALPLAN-TEILNEHMENDE',
+		'anforderungen' => 'X-CALPLAN-ANFORDERUNGEN',
+		'inhalte' => 'X-CALPLAN-INHALTE',
+		'ausstattung' => 'X-CALPLAN-AUSSTATTUNG',
+		'material' => 'X-CALPLAN-MATERIAL',
+		'betreuung' => 'X-CALPLAN-BETREUUNG',
+		'hinweise' => 'X-CALPLAN-HINWEISE',
 	];
 
 	/** Höchstlänge je Feld (Zeichen), damit niemand versehentlich riesige Termine erzeugt. */
@@ -58,6 +55,16 @@ class Planung {
 		'titel', 'zustaendig', 'kontakt_organisation', 'kontakt_name', 'kontakt_telefon',
 		'kontakt_email', 'kontakt_rolle', 'zielgruppe', 'teilnehmende',
 	];
+
+	public function __construct(
+		private Einstellungen $einstellungen = new Einstellungen(),
+	) {
+	}
+
+	/** Name der X-Eigenschaft zu einem Feldschlüssel: Präfix plus Schlüssel in Großbuchstaben, `_` wird `-`. */
+	public static function eigenschaft(string $schluessel): string {
+		return self::PRAEFIX . strtoupper(str_replace('_', '-', $schluessel));
+	}
 
 	/**
 	 * Liest Termindaten und Planung aus einem Kalenderobjekt.
@@ -87,6 +94,7 @@ class Planung {
 			}
 		}
 
+		$vorgabe = $this->einstellungen->ortVorgabe;
 		$ort = trim((string)($termin->LOCATION ?? ''));
 		$daten = [
 			'uid' => (string)($termin->UID ?? ''),
@@ -95,8 +103,8 @@ class Planung {
 			'ende' => $ende?->format(DATE_ATOM),
 			'ganztags' => $ganztags,
 			'serie' => $serie,
-			'ort_extern' => $ort !== '' && $ort !== self::ORT_VORGABE,
-			'ort' => $ort === '' ? self::ORT_VORGABE : $ort,
+			'ort_extern' => $ort !== '' && $ort !== $vorgabe,
+			'ort' => $ort === '' ? $vorgabe : $ort,
 			'beschreibung' => (string)($termin->DESCRIPTION ?? ''),
 		];
 		$geplant = false;
@@ -130,7 +138,7 @@ class Planung {
 
 		$alterTitel = (string)($termin->SUMMARY ?? '');
 		$alterOrt = (string)($termin->LOCATION ?? '');
-		$ort = $planung['ort_extern'] ? $planung['ort'] : self::ORT_VORGABE;
+		$ort = $planung['ort_extern'] ? $planung['ort'] : $this->einstellungen->ortVorgabe;
 
 		foreach ($kalender->select('VEVENT') as $ereignis) {
 			$hauptTermin = $ereignis === $termin;
@@ -186,10 +194,15 @@ class Planung {
 		if ($planung['titel'] === '') {
 			throw new PlanungException('Der Titel der Veranstaltung fehlt');
 		}
-		$planung['ort_extern'] = ($eingabe['ort_extern'] ?? false) === true;
 		$planung['ort'] = $text('ort');
-		if ($planung['ort_extern'] && $planung['ort'] === '') {
-			throw new PlanungException('Bei einem externen Ort fehlt die Adresse');
+		if ($this->einstellungen->ortVorgabe === '') {
+			// Ohne Standardort gibt es nur das freie Ortsfeld; leer heißt: kein Ort.
+			$planung['ort_extern'] = $planung['ort'] !== '';
+		} else {
+			$planung['ort_extern'] = ($eingabe['ort_extern'] ?? false) === true;
+			if ($planung['ort_extern'] && $planung['ort'] === '') {
+				throw new PlanungException('Bei einem externen Ort fehlt die Adresse');
+			}
 		}
 		foreach (array_keys(self::FELDER) as $feld) {
 			$planung[$feld] = $text($feld);
@@ -257,12 +270,13 @@ class Planung {
 		if (str_contains($beschreibung, $link)) {
 			return;
 		}
+		$linkText = $this->einstellungen->linkText;
 		// Einen veralteten Link (z. B. nach Umzug der Instanz) ersetzen statt doppeln.
 		$zeilen = array_filter(
 			explode("\n", $beschreibung),
-			fn (string $zeile) => !str_starts_with($zeile, self::LINK_TEXT),
+			fn (string $zeile) => !str_starts_with($zeile, $linkText),
 		);
 		$beschreibung = rtrim(implode("\n", $zeilen));
-		$ereignis->DESCRIPTION = ($beschreibung === '' ? '' : $beschreibung . "\n\n") . self::LINK_TEXT . $link;
+		$ereignis->DESCRIPTION = ($beschreibung === '' ? '' : $beschreibung . "\n\n") . $linkText . $link;
 	}
 }

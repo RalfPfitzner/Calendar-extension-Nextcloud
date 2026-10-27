@@ -1,7 +1,6 @@
-// Aufbau des Formulars nach der Word-Vorlage „Vorlage blanko Planung alle Veranstaltungen“.
-// Die Feldnamen müssen zu Planung::FELDER in lib/Service/Planung.php passen.
-
-export const ORT_VORGABE = 'MakerSpace Bendorf'
+// Aufbau des Planungsformulars: Abschnitte mit Feldern.
+// Die Feldnamen müssen zu Planung::FELDER in lib/Service/Planung.php passen,
+// `mehrzeilig` zu Planung::EINZEILIG (alles ohne `mehrzeilig` ist dort einzeilig).
 
 /** Abschnitte mit ihren Feldern; Ort und Titel stehen gesondert im Formular. */
 export const ABSCHNITTE = [
@@ -32,10 +31,10 @@ export const ABSCHNITTE = [
 		],
 	},
 	{
-		titel: '4. Inhalte & Werkzeuge',
+		titel: '4. Inhalte & Ausstattung',
 		felder: [
 			{ name: 'inhalte', label: 'Geplante Inhalte / Themenschwerpunkte', mehrzeilig: true },
-			{ name: 'maschinen', label: 'Benötigte Maschinen / Tools', mehrzeilig: true },
+			{ name: 'ausstattung', label: 'Benötigte Ausstattung / Technik', mehrzeilig: true },
 			{ name: 'material', label: 'Benötigtes Material (geschätzt)', mehrzeilig: true },
 			{ name: 'betreuung', label: 'Benötigte weitere Betreuung / Unterstützung', mehrzeilig: true },
 		],

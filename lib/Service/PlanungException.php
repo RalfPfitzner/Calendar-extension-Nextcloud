@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\MspPlanung\Service;
+namespace OCA\CalendarPlanning\Service;
 
 /** Fehler, deren Text der Nutzer sehen darf; der Code ist der HTTP-Status. */
 class PlanungException extends \Exception {

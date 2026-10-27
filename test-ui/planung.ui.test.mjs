@@ -1,5 +1,5 @@
 // Browser-Test gegen eine laufende Test-Nextcloud mit aktivierter App und Kalender-App (tools/test-nextcloud.sh).
-// Legt vorher mit tools/testdaten.sh den Kalender „MSP Cloud Kalender“ mit Testterminen neu an.
+// Legt vorher mit tools/testdaten.sh den Kalender „Planungskalender Verein“ mit Testterminen neu an.
 import { execFileSync } from 'node:child_process'
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,13 +14,19 @@ let browser
 let seite
 const fehler = []
 
+/** Legt die Testdaten über tools/testdaten.sh an; unter Windows läuft das Skript über die Git Bash. */
+function testdatenAnlegen() {
+	const [befehl, argumente] = process.platform === 'win32' ? ['bash', ['tools/testdaten.sh']] : ['tools/testdaten.sh', []]
+	execFileSync(befehl, argumente, { env: { ...process.env, NC_URL: BASIS, NC_USER: NUTZER, NC_PASS: PASSWORT, NC_EVA_PASS: EVA_PASSWORT }, stdio: 'inherit' })
+}
+
 before(async () => {
-	execFileSync('tools/testdaten.sh', { env: { ...process.env, NC_URL: BASIS, NC_USER: NUTZER, NC_PASS: PASSWORT, NC_EVA_PASS: EVA_PASSWORT }, stdio: 'inherit' })
+	testdatenAnlegen()
 	browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined })
 	seite = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 	seite.on('pageerror', (e) => fehler.push('JS: ' + e.message))
 	seite.on('console', (m) => {
-		if (m.type() === 'error' && /Content Security Policy|msp_planung/i.test(m.text())) {
+		if (m.type() === 'error' && /Content Security Policy|calendar_planning/i.test(m.text())) {
 			fehler.push('Konsole: ' + m.text())
 		}
 	})
@@ -40,9 +46,9 @@ after(async () => {
 })
 
 test('Liste lädt ohne Fehler und ohne „null“', async () => {
-	await seite.goto(BASIS + '/index.php/apps/msp_planung/')
+	await seite.goto(BASIS + '/index.php/apps/calendar_planning/')
 	await seite.getByText('Lötworkshop Grundschule').waitFor()
-	const text = await seite.locator('.msp').innerText()
+	const text = await seite.locator('.planung').innerText()
 	assert.doesNotMatch(text, /\bnull\b|\bundefined\b/)
 	assert.match(text, /Seite 1 von 2 · 33 Einträge/)
 	assert.match(seite.url(), /kalender=\d+/)
@@ -55,18 +61,18 @@ test('Planung erfassen, speichern und nach Neuladen wiederfinden', async () => {
 	assert.match(seite.url(), /termin=workshop-1\.ics/)
 
 	await seite.getByRole('radio', { name: 'Externer Ort' }).check()
-	await seite.getByLabel('Externer Ort – Adresse').fill('Grundschule Bendorf\nSchulstraße 1')
+	await seite.getByLabel('Externer Ort – Adresse').fill('Grundschule Musterstadt\nSchulstraße 1')
 	await seite.getByLabel('Zuständig intern').fill('Eva')
 	await seite.getByLabel('E-Mail').fill('kontakt@example.org')
-	await seite.getByLabel('Benötigte Maschinen / Tools').fill('Lötstationen, 3D-Drucker')
+	await seite.getByLabel('Benötigte Ausstattung / Technik').fill('Lötstationen, 3D-Drucker')
 	await seite.getByRole('button', { name: 'Speichern' }).click()
 	await seite.getByText('Gespeichert.').waitFor()
 
 	await seite.reload()
 	await seite.getByRole('heading', { name: /Planung: Lötworkshop/ }).waitFor()
 	assert.equal(await seite.getByLabel('Zuständig intern').inputValue(), 'Eva')
-	assert.equal(await seite.getByLabel('Externer Ort – Adresse').inputValue(), 'Grundschule Bendorf\nSchulstraße 1')
-	assert.equal(await seite.getByLabel('Benötigte Maschinen / Tools').inputValue(), 'Lötstationen, 3D-Drucker')
+	assert.equal(await seite.getByLabel('Externer Ort – Adresse').inputValue(), 'Grundschule Musterstadt\nSchulstraße 1')
+	assert.equal(await seite.getByLabel('Benötigte Ausstattung / Technik').inputValue(), 'Lötstationen, 3D-Drucker')
 	assert.deepEqual(fehler, [])
 })
 
@@ -109,7 +115,7 @@ test('Handy-Breite: kein waagerechtes Scrollen der Seite', async () => {
 })
 
 test('Blättern: Seite steht in der Adresse und übersteht Neuladen', async () => {
-	await seite.goto(BASIS + '/index.php/apps/msp_planung/')
+	await seite.goto(BASIS + '/index.php/apps/calendar_planning/')
 	await seite.getByText('Lötworkshop Grundschule').waitFor()
 	await seite.getByRole('button', { name: '2', exact: true }).click()
 	await seite.waitForURL(/seite=2/)
@@ -129,9 +135,9 @@ test('Lesefreigabe: private Termine fehlen, Formular nur zum Lesen', async () =>
 	const evaFehler = []
 	tab.on('pageerror', (e) => evaFehler.push(e.message))
 	await anmelden(tab, 'eva', EVA_PASSWORT)
-	await tab.goto(BASIS + '/index.php/apps/msp_planung/?pro_seite=50')
+	await tab.goto(BASIS + '/index.php/apps/calendar_planning/?pro_seite=50')
 	await tab.getByText('Lötworkshop Grundschule').waitFor()
-	const text = await tab.locator('.msp').innerText()
+	const text = await tab.locator('.planung').innerText()
 	assert.doesNotMatch(text, /Privater Termin/)
 	assert.match(text, /32 Einträge/)
 	assert.match(text, /nur lesen/)
@@ -145,7 +151,7 @@ test('Lesefreigabe: private Termine fehlen, Formular nur zum Lesen', async () =>
 
 test('Kalenderauswahl wird je Konto gespeichert', async () => {
 	const api = async (methode, pfad, daten) => {
-		const antwort = await fetch(`${BASIS}/index.php/apps/msp_planung/api${pfad}`, {
+		const antwort = await fetch(`${BASIS}/index.php/apps/calendar_planning/api${pfad}`, {
 			method: methode,
 			headers: {
 				Authorization: 'Basic ' + Buffer.from(`${NUTZER}:${PASSWORT}`).toString('base64'),
@@ -159,29 +165,29 @@ test('Kalenderauswahl wird je Konto gespeichert', async () => {
 	const gewaehlt = async () => (await api('GET', '/kalender')).daten.kalender.find((k) => k.gewaehlt)?.name
 
 	const { daten } = await api('GET', '/kalender')
-	const msp = daten.kalender.find((k) => k.name === 'MSP Cloud Kalender')
-	const anderer = daten.kalender.find((k) => k.id !== msp.id)
+	const planungskalender = daten.kalender.find((k) => k.name === 'Planungskalender Verein')
+	const anderer = daten.kalender.find((k) => k.id !== planungskalender.id)
 	assert.ok(anderer, 'Test braucht einen zweiten Kalender')
-	assert.equal(await gewaehlt(), msp.name)
+	assert.equal(await gewaehlt(), planungskalender.name)
 
 	assert.equal((await api('PUT', '/kalender/auswahl', { kalender: anderer.id })).status, 200)
 	assert.equal(await gewaehlt(), anderer.name)
 	assert.equal((await api('PUT', '/kalender/auswahl', { kalender: 999999 })).status, 404)
 	assert.equal(await gewaehlt(), anderer.name)
 
-	assert.equal((await api('PUT', '/kalender/auswahl', { kalender: msp.id })).status, 200)
-	assert.equal(await gewaehlt(), msp.name)
+	assert.equal((await api('PUT', '/kalender/auswahl', { kalender: planungskalender.id })).status, 200)
+	assert.equal(await gewaehlt(), planungskalender.name)
 })
 
 test('Kalender-App: Bearbeiten des Termins lässt die Planung stehen', async () => {
 	const ics = async () => {
-		const antwort = await fetch(`${BASIS}/remote.php/dav/calendars/${NUTZER}/msp-cloud/workshop-1.ics`, {
+		const antwort = await fetch(`${BASIS}/remote.php/dav/calendars/${NUTZER}/planung-test/workshop-1.ics`, {
 			headers: { Authorization: 'Basic ' + Buffer.from(`${NUTZER}:${PASSWORT}`).toString('base64') },
 		})
 		return antwort.text()
 	}
 	const vorher = await ics()
-	assert.match(vorher, /X-MSP-ZUSTAENDIG:Eva/)
+	assert.match(vorher, /X-CALPLAN-ZUSTAENDIG:Eva/)
 	const [, jahr, monat, tag] = vorher.match(/DTSTART;TZID=Europe\/Berlin:(\d{4})(\d{2})(\d{2})/)
 
 	// Englische Oberfläche, damit die Bezeichnungen der Kalender-App fest sind.
@@ -193,7 +199,7 @@ test('Kalender-App: Bearbeiten des Termins lässt die Planung stehen', async () 
 	await tab.goto(`${BASIS}/index.php/apps/calendar/timeGridWeek/${jahr}-${monat}-${tag}`)
 	await tab.getByText('Lötworkshop Grundschule').first().click()
 	// Der Link aus der Beschreibung ist im Termin anklickbar.
-	await tab.locator('a[href*="/apps/msp_planung/"]').first().waitFor()
+	await tab.locator('a[href*="/apps/calendar_planning/"]').first().waitFor()
 	await tab.getByRole('button', { name: 'Edit', exact: true }).click()
 	await tab.getByPlaceholder('Title').fill('Lötworkshop Grundschule (geändert in der Kalender-App)')
 	await tab.getByRole('button', { name: 'Update', exact: true }).click()
@@ -206,7 +212,7 @@ test('Kalender-App: Bearbeiten des Termins lässt die Planung stehen', async () 
 		nachher = await ics()
 	}
 	assert.match(nachher, /SUMMARY:Lötworkshop Grundschule \(geändert in der Kalender-App\)/)
-	for (const zeile of vorher.split(/\r?\n/).filter((z) => z.startsWith('X-MSP-'))) {
+	for (const zeile of vorher.split(/\r?\n/).filter((z) => z.startsWith('X-CALPLAN-'))) {
 		assert.ok(nachher.includes(zeile), `fehlt nach dem Bearbeiten: ${zeile}`)
 	}
 	assert.match(nachher.replace(/\r?\n /g, ''), /Planung öffnen: http/)

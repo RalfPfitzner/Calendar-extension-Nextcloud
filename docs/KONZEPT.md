@@ -1,50 +1,66 @@
-# Konzept MSP-Planung
+# Konzept Kalender-Planung
 
-Grundlage ist der Planungs-Chat vom 20.10.2026 ([`info.md`](info.md)). Hier steht, wie die App gebaut ist und was bei der Umsetzung entschieden wurde.
+Ausgangspunkt war der Planungs-Chat vom 20.10.2026 für den ersten Nutzer ([`historie/info.md`](historie/info.md), unverändert). Seit dem Umbau zur generischen App (Oktober 2026) ist alles Organisationsbezogene Einstellung statt Code. Hier steht, wie die App gebaut ist und was bei der Umsetzung entschieden wurde.
 
 ## 1. Ablauf für die Nutzer
 
-1. Termin wie gewohnt in der Kalender-App im „MSP Cloud Kalender“ anlegen (Datum, Uhrzeit, Titel).
-2. In Nextcloud oben auf **MSP-Planung** gehen. Die Liste zeigt die Termine des Kalenders (Standard: ab 30 Tagen vor heute bis ein Jahr im Voraus), mit Spalte „Planung: erfasst/offen“.
-3. Termin anklicken, das Formular nach der Word-Vorlage ausfüllen, **Speichern**.
-4. Beim Speichern trägt die App in die Terminbeschreibung die Zeile `Planung öffnen: <Link>` ein. In der Kalender-App ist der Link anklickbar und führt direkt zum Formular.
+1. Termin wie gewohnt in der Kalender-App im Planungskalender anlegen (Datum, Uhrzeit, Titel).
+2. In Nextcloud oben auf **Kalender-Planung** gehen. Die Liste zeigt die Termine des Kalenders (Standard: ab 30 Tagen vor heute bis ein Jahr im Voraus), mit Spalte „Planung: erfasst/offen“.
+3. Termin anklicken, das Planungsformular ausfüllen, **Speichern**.
+4. Beim Speichern trägt die App in die Terminbeschreibung die Zeile `Planung öffnen: <Link>` ein (Text einstellbar). In der Kalender-App ist der Link anklickbar und führt direkt zum Formular.
 
 Datum und Uhrzeit werden nur in der Kalender-App geändert; das Formular zeigt sie an.
 
 ## 2. Datenformat im Termin
 
-| Formularfeld | Eigenschaft im VEVENT |
-|---|---|
-| Titel der Veranstaltung | `SUMMARY` |
-| Ort (MakerSpace Bendorf / Externer Ort – Adresse) | `LOCATION` |
-| Zuständig intern | `X-MSP-ZUSTAENDIG` |
-| Parkmöglichkeiten / Zufahrt / Anlieferung | `X-MSP-ZUFAHRT` |
-| Raum-Informationen | `X-MSP-RAUM` |
-| Organisation / Firma | `X-MSP-KONTAKT-ORGANISATION` |
-| Name | `X-MSP-KONTAKT-NAME` |
-| Telefon | `X-MSP-KONTAKT-TELEFON` |
-| E-Mail | `X-MSP-KONTAKT-EMAIL` |
-| Rolle / Funktion | `X-MSP-KONTAKT-ROLLE` |
-| Zielgruppe | `X-MSP-ZIELGRUPPE` |
-| Anzahl der Teilnehmenden | `X-MSP-TEILNEHMENDE` |
-| Besondere Anforderungen | `X-MSP-ANFORDERUNGEN` |
-| Geplante Inhalte / Themenschwerpunkte | `X-MSP-INHALTE` |
-| Benötigte Maschinen / Tools | `X-MSP-MASCHINEN` |
-| Benötigtes Material (geschätzt) | `X-MSP-MATERIAL` |
-| Benötigte weitere Betreuung / Unterstützung | `X-MSP-BETREUUNG` |
-| Besondere Wünsche / Hinweise / Anmerkungen | `X-MSP-HINWEISE` |
+Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist der Feldschlüssel in Großbuchstaben, `_` wird `-` (`Planung::eigenschaft`).
+
+| Formularfeld | Schlüssel | Eigenschaft im VEVENT |
+|---|---|---|
+| Titel der Veranstaltung | `titel` | `SUMMARY` |
+| Ort (Standardort / externer Ort mit Adresse) | `ort` | `LOCATION` |
+| Zuständig intern | `zustaendig` | `X-CALPLAN-ZUSTAENDIG` |
+| Parkmöglichkeiten / Zufahrt / Anlieferung | `zufahrt` | `X-CALPLAN-ZUFAHRT` |
+| Raum-Informationen | `raum` | `X-CALPLAN-RAUM` |
+| Organisation / Firma | `kontakt_organisation` | `X-CALPLAN-KONTAKT-ORGANISATION` |
+| Name | `kontakt_name` | `X-CALPLAN-KONTAKT-NAME` |
+| Telefon | `kontakt_telefon` | `X-CALPLAN-KONTAKT-TELEFON` |
+| E-Mail | `kontakt_email` | `X-CALPLAN-KONTAKT-EMAIL` |
+| Rolle / Funktion | `kontakt_rolle` | `X-CALPLAN-KONTAKT-ROLLE` |
+| Zielgruppe | `zielgruppe` | `X-CALPLAN-ZIELGRUPPE` |
+| Anzahl der Teilnehmenden | `teilnehmende` | `X-CALPLAN-TEILNEHMENDE` |
+| Besondere Anforderungen | `anforderungen` | `X-CALPLAN-ANFORDERUNGEN` |
+| Geplante Inhalte / Themenschwerpunkte | `inhalte` | `X-CALPLAN-INHALTE` |
+| Benötigte Ausstattung / Technik | `ausstattung` | `X-CALPLAN-AUSSTATTUNG` |
+| Benötigtes Material (geschätzt) | `material` | `X-CALPLAN-MATERIAL` |
+| Benötigte weitere Betreuung / Unterstützung | `betreuung` | `X-CALPLAN-BETREUUNG` |
+| Besondere Wünsche / Hinweise / Anmerkungen | `hinweise` | `X-CALPLAN-HINWEISE` |
 
 - Alle Felder sind Freitext (auch „Anzahl der Teilnehmenden“, damit „ca. 20“ oder „2 Klassen“ geht), mehrzeilig wo sinnvoll, höchstens 5000 Zeichen. Leere Felder entfernen die Eigenschaft.
 - Pflicht ist nur der Titel; bei externem Ort die Adresse. Eine eingetragene E-Mail-Adresse muss gültig sein.
-- Ort: Ist `LOCATION` leer oder „MakerSpace Bendorf“, zeigt das Formular „MakerSpace Bendorf“; jeder andere Ort gilt als externer Ort. Beim Speichern mit „MakerSpace Bendorf“ wird genau dieser Text als Ort eingetragen. Eine eigene Eigenschaft für „extern“ gibt es nicht.
-- Die Namen sind Datenformat und werden nie umbenannt. Neue Felder bekommen neue Namen.
+- Ort mit Standardort (Einstellung `ort_vorgabe`): Ist `LOCATION` leer oder gleich dem Standardort, zeigt das Formular den Standardort; jeder andere Ort gilt als externer Ort. Beim Speichern mit Standardort wird genau dieser Text als Ort eingetragen. Eine eigene Eigenschaft für „extern“ gibt es nicht.
+- Ort ohne Standardort: ein freies Ortsfeld, leer erlaubt (`LOCATION` wird dann entfernt).
+- Die Schlüssel sind Datenformat und werden nie umbenannt. Neue Felder bekommen neue Schlüssel.
 - Fremde Eigenschaften (Teilnehmende, Erinnerungen, Kategorien, `X-…` anderer Programme) bleiben unverändert.
+- Vor dem Umbau hieß das Präfix `X-MSP-`; weil die App bis dahin nirgends installiert war, gibt es keinen Rückfall auf diese Namen.
 
-## 3. Entscheidungen der Umsetzung
+## 3. Einstellungen (Admin)
 
-| Frage (aus `info.md`, Abschnitt 7) | Entscheidung | Begründung |
+Alle in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen von `EinstellungenLader`, bereinigt in `Einstellungen` (einzeilig, ohne Steuerzeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben.
+
+| Schlüssel | Vorgabe | Wirkung |
 |---|---|---|
-| Namen der `X-MSP-…`-Eigenschaften | wie in Abschnitt 2 | Deutsch, sprechend, ohne Umlaute (iCalendar erlaubt in Namen nur A–Z, 0–9 und „-“). |
+| `ort_vorgabe` | leer | Standardort (siehe Abschnitt 2), höchstens 500 Zeichen |
+| `kalender_muster` | leer | Namensfragment für die Vorbelegung der Kalenderauswahl; ohne Treffer oder ohne Muster der erste Kalender |
+| `link_text` | `Planung öffnen:` | Erkennungszeichen vor dem Link in der Beschreibung; leer fällt auf die Vorgabe zurück, weil sonst jede Zeile als alter Link gälte |
+
+Die Oberfläche bekommt den Standardort über `GET /api/einstellungen`; der Linktext bleibt serverseitig.
+
+## 4. Entscheidungen der Umsetzung
+
+| Frage (aus `historie/info.md`, Abschnitt 7) | Entscheidung | Begründung |
+|---|---|---|
+| Namen der Eigenschaften | wie in Abschnitt 2 | Deutsch, sprechend, ohne Umlaute (iCalendar erlaubt in Namen nur A–Z, 0–9 und „-“); eigener Vendor-Präfix `X-CALPLAN-`. |
 | Link „Planung öffnen“ automatisch oder manuell? | Automatisch beim ersten Speichern im Formular; ein Link mit veralteter Adresse wird ersetzt, nie verdoppelt. | Ein Link vor dem ersten Speichern ginge nur, wenn die App jeden neuen Termin anfasst. Das wäre ein Eingriff in fremde Termine, den niemand ausgelöst hat. |
 | Druck-/PDF-Ansicht | noch nicht umgesetzt | optional laut Chat; nächster Schritt, wenn gewünscht. |
 
@@ -54,18 +70,18 @@ Weitere Entscheidungen:
 - **Freigaben:** Wer den Kalender nur lesen darf, sieht das Formular schreibgeschützt. Als „privat“ oder „vertraulich“ markierte Termine sieht in einem geteilten Kalender nur der Eigentümer.
 - **Gleichzeitiges Bearbeiten:** Gespeichert wird nur, wenn der Termin seit dem Öffnen unverändert ist (ETag). Sonst kommt die Meldung „Der Termin wurde inzwischen geändert …“, damit niemand Änderungen aus der Kalender-App überschreibt.
 - **Terminserien:** Die Planung gilt für die ganze Serie und steht im Serien-Termin. Geänderte Einzeltermine einer Serie bekommen dieselben Planungsfelder. Titel und Ort übernehmen sie nur, wenn sie noch die alten Werte der Serie hatten. Die Liste zeigt eine Serie einmal, mit dem ersten Termin im Zeitraum.
-- **Kalenderauswahl:** Vorbelegt ist der erste Kalender mit „MSP“ im Namen; eine andere Auswahl merkt sich die App je Konto (Nutzereinstellung `kalender` über `IUserConfig`).
+- **Kalenderauswahl:** Vorbelegt über `kalender_muster`; eine andere Auswahl merkt sich die App je Konto (Nutzereinstellung `kalender` über `IUserConfig`).
 - **Keine Scheduling-Mails:** Das Speichern der Planung verschickt keine Einladungs-Updates an Teilnehmende (läuft am CalDAV-Server vorbei). Termin-Zeiten ändert die App ohnehin nicht.
-- **Geprüft in den Test-Nextclouds 34.0.5 mit Kalender-App 6.6.3 und 35.0.2 mit Kalender-App 6.6.4 (vorher 32.0.5 mit 6.0.3 und 6.6.2):** Bearbeiten eines Termins in der Kalender-App lässt die `X-MSP-…`-Eigenschaften stehen, und der Link in der Beschreibung ist dort anklickbar. Der Browser-Test „Kalender-App: Bearbeiten des Termins lässt die Planung stehen“ prüft das bei jedem Lauf. Die Kalender-App 6.6.x läuft auf Nextcloud 32 bis 35.
+- **Geprüft in den Test-Nextclouds 34.0.5 mit Kalender-App 6.6.3 und 35.0.2 mit Kalender-App 6.6.4:** Bearbeiten eines Termins in der Kalender-App lässt die `X-CALPLAN-…`-Eigenschaften stehen, und der Link in der Beschreibung ist dort anklickbar. Der Browser-Test „Kalender-App: Bearbeiten des Termins lässt die Planung stehen“ prüft das bei jedem Lauf.
 
-## 4. Datenschutz
+## 5. Datenschutz
 
-Die Kontaktdaten Externer stehen im Termin. Sie sieht jeder, der Zugriff auf den MSP-Kalender hat, und jedes Gerät, das ihn per CalDAV synchronisiert. Das ist in Ordnung, solange der Kalender nur intern geteilt ist. Eva sollte das wissen. Den Kalender nicht öffentlich teilen (öffentlicher Link) und nicht als Abo nach außen geben, wenn Kontaktdaten darin stehen.
+Die Kontaktdaten Externer stehen im Termin. Sie sieht jeder, der Zugriff auf den Planungskalender hat, und jedes Gerät, das ihn per CalDAV synchronisiert. Das ist in Ordnung, solange der Kalender nur intern geteilt ist; wer die Planung erfasst, sollte das wissen. Den Kalender nicht öffentlich teilen (öffentlicher Link) und nicht als Abo nach außen geben, wenn Kontaktdaten darin stehen.
 
-## 5. Offen
+## 6. Offen
 
-- Installationsrechte für eigene Apps auf Ralfs Instanz (`custom_apps` beschreibbar, App aktivieren als Admin).
-- Test auf Ralfs Instanz: Kalender „MSP Cloud Kalender“, Freigaben, Bearbeiten in der Kalender-App und auf Handys (DAVx⁵, iOS).
+- Erster Einsatz auf einer echten Instanz: `custom_apps` beschreibbar, App aktivieren als Admin, Einstellungen setzen, Freigaben, Bearbeiten in der Kalender-App und auf Handys (DAVx⁵, iOS).
 - Kopieren bzw. Duplizieren eines Termins in der Kalender-App: Bleiben die Felder erhalten, und zeigt der Link dann noch auf den alten Termin? Beim nächsten Speichern im Formular wird der Link der Kopie korrigiert.
-- Optional: Druck-/PDF-Ansicht im Layout der Word-Vorlage.
-- Optional: Export (Excel/CSV) der Liste, falls Eva ihn doch braucht (laut Chat bewusst nicht).
+- Die Oberfläche ist einsprachig deutsch, Tagesgrenzen der Liste liegen in `Europe/Berlin`. Für andere Sprachräume braucht es l10n und die Zeitzone aus den Nextcloud-Einstellungen.
+- Geplant: Feldschema vom Admin definierbar (Abschnitte, Felder, Typen) statt fester Feldsatz; die Admin-Einstellungen bekommen eine eigene Seite.
+- Optional: Druck-/PDF-Ansicht, Export (Excel/CSV) der Liste.

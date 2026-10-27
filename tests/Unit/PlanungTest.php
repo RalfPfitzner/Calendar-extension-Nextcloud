@@ -2,20 +2,23 @@
 
 declare(strict_types=1);
 
-namespace OCA\MspPlanung\Tests\Unit;
+namespace OCA\CalendarPlanning\Tests\Unit;
 
 use DateTimeImmutable;
 use DateTimeZone;
-use OCA\MspPlanung\Service\Planung;
-use OCA\MspPlanung\Service\PlanungException;
+use OCA\CalendarPlanning\Service\Einstellungen;
+use OCA\CalendarPlanning\Service\Planung;
+use OCA\CalendarPlanning\Service\PlanungException;
 use PHPUnit\Framework\TestCase;
 use Sabre\VObject\Reader;
 
 class PlanungTest extends TestCase {
+	private const ORT_VORGABE = 'Vereinsheim';
+
 	private Planung $planung;
 
 	protected function setUp(): void {
-		$this->planung = new Planung();
+		$this->planung = new Planung(new Einstellungen(self::ORT_VORGABE, 'Planung'));
 	}
 
 	private static function ics(string $zusatz = '', string $weitere = ''): string {
@@ -26,15 +29,23 @@ class PlanungTest extends TestCase {
 			. $weitere . "END:VCALENDAR\r\n";
 	}
 
-	private function eingabe(array $werte = []): array {
+	private function eingabe(array $werte = [], ?Planung $planung = null): array {
 		$leer = array_fill_keys(array_keys(Planung::FELDER), '');
-		return $this->planung->pruefen($werte + ['titel' => 'Lötworkshop', 'ort_extern' => false, 'ort' => ''] + $leer);
+		return ($planung ?? $this->planung)->pruefen($werte + ['titel' => 'Lötworkshop', 'ort_extern' => false, 'ort' => ''] + $leer);
+	}
+
+	public function testEigenschaftsnamenFolgenDemSchluessel(): void {
+		$this->assertSame('X-CALPLAN-KONTAKT-ORGANISATION', Planung::eigenschaft('kontakt_organisation'));
+		foreach (Planung::FELDER as $schluessel => $eigenschaft) {
+			$this->assertSame(Planung::eigenschaft($schluessel), $eigenschaft, "Eigenschaft zu {$schluessel}");
+			$this->assertMatchesRegularExpression('/^X-CALPLAN-[A-Z0-9-]+$/', $eigenschaft);
+		}
 	}
 
 	public function testLesenOhnePlanungSetztOrtVorgabe(): void {
 		$daten = $this->planung->lesen(self::ics());
 		$this->assertSame('Lötworkshop', $daten['titel']);
-		$this->assertSame(Planung::ORT_VORGABE, $daten['ort']);
+		$this->assertSame(self::ORT_VORGABE, $daten['ort']);
 		$this->assertFalse($daten['ort_extern']);
 		$this->assertFalse($daten['geplant']);
 		$this->assertSame('2026-11-05T14:00:00+01:00', $daten['beginn']);
@@ -45,22 +56,22 @@ class PlanungTest extends TestCase {
 	public function testSchreibenUndLesenErgibtDieselbenWerte(): void {
 		$planung = $this->eingabe([
 			'ort_extern' => true,
-			'ort' => "Grundschule Bendorf\nSchulstraße 1",
+			'ort' => "Grundschule Musterstadt\nSchulstraße 1",
 			'zustaendig' => 'Eva',
 			'kontakt_email' => 'lehrer@example.org',
 			'hinweise' => "Zeile 1\r\nZeile 2; mit, Komma und \\ Backslash",
 			'teilnehmende' => '24',
 		]);
-		$neu = $this->planung->schreiben(self::ics(), $planung, 'https://cloud.example.org/apps/msp_planung/?kalender=3&termin=t1.ics');
+		$neu = $this->planung->schreiben(self::ics(), $planung, 'https://cloud.example.org/apps/calendar_planning/?kalender=3&termin=t1.ics');
 		$daten = $this->planung->lesen($neu);
 
 		$this->assertTrue($daten['geplant']);
 		$this->assertTrue($daten['ort_extern']);
-		$this->assertSame("Grundschule Bendorf\nSchulstraße 1", $daten['ort']);
+		$this->assertSame("Grundschule Musterstadt\nSchulstraße 1", $daten['ort']);
 		$this->assertSame('Eva', $daten['zustaendig']);
 		$this->assertSame("Zeile 1\nZeile 2; mit, Komma und \\ Backslash", $daten['hinweise']);
 		$this->assertSame('24', $daten['teilnehmende']);
-		$this->assertStringContainsString('X-MSP-ZUSTAENDIG:Eva', $neu);
+		$this->assertStringContainsString('X-CALPLAN-ZUSTAENDIG:Eva', $neu);
 	}
 
 	public function testFremdeEigenschaftenUndZeitenBleibenErhalten(): void {
@@ -75,24 +86,59 @@ class PlanungTest extends TestCase {
 	public function testLeereFelderEntfernenDieEigenschaft(): void {
 		$mit = $this->planung->schreiben(self::ics(), $this->eingabe(['raum' => 'Werkstatt']), null);
 		$ohne = $this->planung->schreiben($mit, $this->eingabe(['raum' => '']), null);
-		$this->assertStringContainsString('X-MSP-RAUM', $mit);
-		$this->assertStringNotContainsString('X-MSP-RAUM', $ohne);
+		$this->assertStringContainsString('X-CALPLAN-RAUM', $mit);
+		$this->assertStringNotContainsString('X-CALPLAN-RAUM', $ohne);
 	}
 
 	public function testInternerOrtSchreibtDieVorgabe(): void {
 		$neu = $this->planung->schreiben(self::ics("LOCATION:Irgendwo\r\n"), $this->eingabe(['ort' => 'wird ignoriert']), null);
-		$this->assertSame(Planung::ORT_VORGABE, (string)Reader::read($neu)->VEVENT->LOCATION);
+		$this->assertSame(self::ORT_VORGABE, (string)Reader::read($neu)->VEVENT->LOCATION);
+	}
+
+	public function testOhneStandardortIstDasOrtsfeldFrei(): void {
+		$planung = new Planung(new Einstellungen());
+		// Lesen: kein Ort heißt leer, jeder Ort gilt als eingetragen.
+		$this->assertSame('', $planung->lesen(self::ics())['ort']);
+		$this->assertFalse($planung->lesen(self::ics())['ort_extern']);
+		$this->assertTrue($planung->lesen(self::ics("LOCATION:Rathaus\r\n"))['ort_extern']);
+
+		// Prüfen: ort_extern ergibt sich aus dem Ortsfeld, ein leerer Ort ist erlaubt.
+		$leer = $this->eingabe(['ort_extern' => true, 'ort' => ''], $planung);
+		$this->assertFalse($leer['ort_extern']);
+		$voll = $this->eingabe(['ort_extern' => false, 'ort' => 'Rathaus'], $planung);
+		$this->assertTrue($voll['ort_extern']);
+
+		// Schreiben: leer entfernt LOCATION, ein Ort steht wörtlich drin.
+		$ohne = $planung->schreiben(self::ics("LOCATION:Irgendwo\r\n"), $leer, null);
+		$this->assertStringNotContainsString('LOCATION', $ohne);
+		$mit = $planung->schreiben(self::ics(), $voll, null);
+		$this->assertSame('Rathaus', (string)Reader::read($mit)->VEVENT->LOCATION);
 	}
 
 	public function testLinkWirdEinmalAngehaengtUndAlterErsetzt(): void {
-		$alt = 'https://alt.example.org/apps/msp_planung/?kalender=1&termin=t1.ics';
-		$neu = 'https://cloud.example.org/apps/msp_planung/?kalender=3&termin=t1.ics';
+		$alt = 'https://alt.example.org/apps/calendar_planning/?kalender=1&termin=t1.ics';
+		$neu = 'https://cloud.example.org/apps/calendar_planning/?kalender=3&termin=t1.ics';
 		$einmal = $this->planung->schreiben(self::ics("DESCRIPTION:Mitbringen: Laptop\r\n"), $this->eingabe(), $alt);
 		$zweimal = $this->planung->schreiben($einmal, $this->eingabe(), $alt);
 		$this->assertSame("Mitbringen: Laptop\n\nPlanung öffnen: {$alt}", $this->planung->lesen($zweimal)['beschreibung']);
 
 		$umgezogen = $this->planung->schreiben($zweimal, $this->eingabe(), $neu);
 		$this->assertSame("Mitbringen: Laptop\n\nPlanung öffnen: {$neu}", $this->planung->lesen($umgezogen)['beschreibung']);
+	}
+
+	public function testLinktextAusEinstellungen(): void {
+		$planung = new Planung(new Einstellungen(self::ORT_VORGABE, '', "Zur\tPlanung:"));
+		$neu = $planung->schreiben(self::ics(), $this->eingabe([], $planung), 'https://cloud.example.org/p');
+		$this->assertSame('Zur Planung: https://cloud.example.org/p', $planung->lesen($neu)['beschreibung']);
+	}
+
+	public function testEinstellungenWerdenBereinigt(): void {
+		$e = new Einstellungen("  Vereins\r\nheim\x00 ", str_repeat('x', 200), '');
+		$this->assertSame('Vereins heim', $e->ortVorgabe);
+		$this->assertSame(100, mb_strlen($e->kalenderMuster));
+		// Ohne Erkennungszeichen würde jede Zeile der Beschreibung als alter Link gelten; deshalb die Vorgabe.
+		$this->assertSame(Einstellungen::LINK_TEXT_VORGABE, $e->linkText);
+		$this->assertSame(['ort_vorgabe' => 'Vereins heim'], $e->fuerOberflaeche());
 	}
 
 	public function testSerieErsterTerminImZeitraumUndAusnahmen(): void {
@@ -110,11 +156,11 @@ class PlanungTest extends TestCase {
 		$this->assertCount(2, $ereignisse);
 		foreach ($ereignisse as $ereignis) {
 			$this->assertSame('Lötkurs', (string)$ereignis->SUMMARY);
-			$this->assertSame('Eva', (string)$ereignis->{'X-MSP-ZUSTAENDIG'});
+			$this->assertSame('Eva', (string)$ereignis->{'X-CALPLAN-ZUSTAENDIG'});
 		}
 		// Der abweichende Ort der Ausnahme bleibt, der der Serie wird gesetzt.
 		$orte = array_map(fn ($e) => (string)$e->LOCATION, $ereignisse);
-		$this->assertSame([Planung::ORT_VORGABE, 'Sonderort'], $orte);
+		$this->assertSame([self::ORT_VORGABE, 'Sonderort'], $orte);
 	}
 
 	public function testGanztaegigerTermin(): void {

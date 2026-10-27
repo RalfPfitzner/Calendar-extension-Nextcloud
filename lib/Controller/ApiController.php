@@ -2,11 +2,12 @@
 
 declare(strict_types=1);
 
-namespace OCA\MspPlanung\Controller;
+namespace OCA\CalendarPlanning\Controller;
 
-use OCA\MspPlanung\AppInfo\Application;
-use OCA\MspPlanung\Service\KalenderService;
-use OCA\MspPlanung\Service\PlanungException;
+use OCA\CalendarPlanning\AppInfo\Application;
+use OCA\CalendarPlanning\Service\Einstellungen;
+use OCA\CalendarPlanning\Service\KalenderService;
+use OCA\CalendarPlanning\Service\PlanungException;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -31,9 +32,16 @@ class ApiController extends Controller {
 		IRequest $request,
 		private IUserSession $userSession,
 		private KalenderService $service,
+		private Einstellungen $einstellungen,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
+	}
+
+	/** Die Einstellungen, die die Oberfläche braucht (Standardort). */
+	#[NoAdminRequired]
+	public function einstellungen(): JSONResponse {
+		return $this->ausfuehren(fn (string $uid) => $this->einstellungen->fuerOberflaeche());
 	}
 
 	#[NoAdminRequired]
@@ -86,7 +94,7 @@ class ApiController extends Controller {
 				? $e->getCode() : Http::STATUS_BAD_REQUEST;
 			return new JSONResponse(['fehler' => $e->getMessage()], $status);
 		} catch (\Throwable $e) {
-			$this->logger->error('MSP-Planung: ' . $e->getMessage(), ['exception' => $e]);
+			$this->logger->error('Kalender-Planung: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['fehler' => 'Interner Fehler, Details im Nextcloud-Protokoll'], 500);
 		}
 	}

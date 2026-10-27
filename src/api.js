@@ -1,11 +1,15 @@
 import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 
-const url = (pfad) => generateUrl('/apps/msp_planung/api' + pfad)
+const url = (pfad) => generateUrl('/apps/calendar_planning/api' + pfad)
 
 /** Fehlertext aus der Antwort der App oder eine allgemeine Meldung. */
 export function fehlertext(fehler) {
 	return fehler?.response?.data?.fehler ?? 'Verbindung zur Nextcloud fehlgeschlagen'
+}
+
+export async function einstellungenLaden() {
+	return (await axios.get(url('/einstellungen'))).data
 }
 
 export async function kalenderLaden() {

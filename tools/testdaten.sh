@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Legt in einer Test-Nextcloud den Kalender „MSP Cloud Kalender“ mit erfundenen Testterminen neu an.
+# Legt in einer Test-Nextcloud den Kalender „Planungskalender Verein“ mit erfundenen Testterminen neu an.
 # Nur für Testinstanzen: vorhandene Testtermine gleichen Namens werden überschrieben.
 # Aufruf: NC_URL=http://localhost:8080 NC_USER=admin NC_PASS=… tools/testdaten.sh
 set -euo pipefail
@@ -7,18 +7,18 @@ set -euo pipefail
 NC_URL=${NC_URL:-http://localhost:8080}
 NC_USER=${NC_USER:-admin}
 NC_PASS=${NC_PASS:?NC_PASS fehlt}
-KALENDER="$NC_URL/remote.php/dav/calendars/$NC_USER/msp-cloud"
+KALENDER="$NC_URL/remote.php/dav/calendars/$NC_USER/planung-test"
 auth=(-u "$NC_USER:$NC_PASS" -sS -o /dev/null)
 
 # Kalender anlegen; 405 heißt: gibt es schon.
 code=$(curl "${auth[@]}" -w '%{http_code}' -X MKCALENDAR "$KALENDER/" -H 'Content-Type: application/xml' --data \
-	'<?xml version="1.0"?><c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop><d:displayname>MSP Cloud Kalender</d:displayname><c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>')
+	'<?xml version="1.0"?><c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop><d:displayname>Planungskalender Verein</d:displayname><c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>')
 [[ $code == 201 || $code == 405 ]] || { echo "Kalender anlegen: HTTP $code" >&2; exit 1; }
 
 # termin UID BEGINN ENDE TITEL [ZUSATZZEILEN]
 termin() {
 	local jahr; jahr=$(date +%Y)
-	printf 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MSP-Planung Test//DE\r\nBEGIN:VEVENT\r\nUID:%s\r\nDTSTAMP:%s0101T000000Z\r\nDTSTART;TZID=Europe/Berlin:%s\r\nDTEND;TZID=Europe/Berlin:%s\r\nSUMMARY:%s\r\n%bEND:VEVENT\r\nEND:VCALENDAR\r\n' \
+	printf 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Kalender-Planung Test//DE\r\nBEGIN:VEVENT\r\nUID:%s\r\nDTSTAMP:%s0101T000000Z\r\nDTSTART;TZID=Europe/Berlin:%s\r\nDTEND;TZID=Europe/Berlin:%s\r\nSUMMARY:%s\r\n%bEND:VEVENT\r\nEND:VCALENDAR\r\n' \
 		"$1" "$jahr" "$2" "$3" "$4" "${5:-}" \
 		| curl "${auth[@]}" -X PUT "$KALENDER/$1.ics" -H 'Content-Type: text/calendar' --data-binary @- -w '%{http_code}' \
 		| grep -qE '^20[14]$' || { echo "Termin $1 anlegen fehlgeschlagen" >&2; exit 1; }
