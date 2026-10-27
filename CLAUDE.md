@@ -4,7 +4,7 @@ Nextcloud-App für den Makerspace Mayen-Koblenz: Die Planungsdaten der Word-Vorl
 
 ## Architektur
 
-- App-ID `msp_planung`, Namespace `OCA\MspPlanung`, nur Nextcloud 32 (Ralfs Instanz: 32.0.5). Das Repo ist die App selbst (`appinfo/`, `lib/`, `templates/`, `img/`, `src/`).
+- App-ID `msp_planung`, Namespace `OCA\MspPlanung`, bisher nur für Nextcloud 32 gebaut und getestet (`appinfo/info.xml`: `min-version`/`max-version` 32). **Ralfs Instanz läuft inzwischen auf Nextcloud 34.0.5.1 mit Kalender-App 6.6.3** (Stand 26.10.2026, Quelle: `test/docs/SYSTEME.md` im Repo `ralfpfitzner/test`); dort lässt sich die App daher noch nicht aktivieren. Die Umstellung auf 34 (Versionsgrenzen, Test-Nextcloud, CI, README, `docs/KONZEPT.md`) ist offen. Das Repo ist die App selbst (`appinfo/`, `lib/`, `templates/`, `img/`, `src/`).
 - **Die Kalender-App wird nicht verändert und nicht geforkt.** Die App liest und schreibt Termine selbst; Planung steht als `X-MSP-…`-Eigenschaften im VEVENT, Titel in `SUMMARY`, Ort in `LOCATION`.
 - `lib/Service/Planung.php`: reine Umwandlung iCalendar ↔ Formular (ohne Nextcloud, mit PHPUnit getestet). Die Namen in `Planung::FELDER` sind Datenformat: **nie umbenennen**, nur ergänzen. `src/felder.js` muss dazu passen.
 - `lib/Service/KalenderService.php`: Rechte und Kalenderliste über OCP (`IManager`, `ICalendarIsWritable`, `ICalendarIsShared`), Lesen/Schreiben der Objekte über `OCA\DAV\CalDAV\CalDavBackend` (OCP kann bestehende Termine nicht ändern). Private Termine in geteilten Kalendern bleiben für andere unsichtbar. Speichern nur mit passendem ETag (409 bei Konflikt).
@@ -19,7 +19,7 @@ Wie im Bestellportal und in der Goethe-Verwaltung: Listen seitenweise, scrollen 
 ## Testen
 
 - `composer install && composer test:unit` – Feldzuordnung, Escaping, Serien, Link.
-- `npm ci && npm run build && tools/test-nextcloud.sh && npm run test:ui` – echte Nextcloud 32.0.5 in Docker mit Kalender-App 6.6.2 (andere Version: `KALENDER_VERSION=…`), Testdaten aus `tools/testdaten.sh` (nur erfundene Daten), Browser-Tests mit Playwright. In der Cloud-Umgebung: `CHROMIUM=/opt/pw-browsers/chromium`, Docker-Daemon ggf. mit `sudo dockerd &` starten.
+- `npm ci && npm run build && tools/test-nextcloud.sh && npm run test:ui` – echte Nextcloud 32.0.5 in Docker mit Kalender-App 6.6.2 (noch nicht der Stand von Ralfs Instanz, siehe oben) (andere Version: `KALENDER_VERSION=…`), Testdaten aus `tools/testdaten.sh` (nur erfundene Daten), Browser-Tests mit Playwright. In der Cloud-Umgebung: `CHROMIUM=/opt/pw-browsers/chromium`, Docker-Daemon ggf. mit `sudo dockerd &` starten.
 - Vor dem Abgeben beides laufen lassen; neue Funktionen bekommen Tests. Was nur auf Ralfs Instanz prüfbar ist, im PR ausdrücklich als „von Ralf zu testen“ aufführen.
 
 ## Versionen und Releases
