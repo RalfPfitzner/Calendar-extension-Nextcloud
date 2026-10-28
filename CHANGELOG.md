@@ -2,12 +2,23 @@
 
 ## [Unveröffentlicht]
 
+## [1.0.0] - 2026-10-28
+
+Aus „MSP-Planung“ wird die organisationsneutrale App „Kalender-Planung“ (`calendar_planning`): Felder, Standardort
+und Kalender-Vorbelegung legt der Admin in den Einstellungen fest (#16, Umbau von Jonas aus #13).
+
 ### Hinweise zum Update
+- Neue App-ID: Das Paket heißt `calendar_planning-1.0.0.tar.gz` und wird als neue App installiert
+  (`occ app:enable calendar_planning`). Herkunft prüfen mit
+  `gh attestation verify calendar_planning-1.0.0.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
+- Nach der Installation unter „Verwaltung → Zusätzliche Einstellungen → Kalender-Planung“ Standardort,
+  Kalender-Vorbelegung und bei Bedarf die Vorlage laden (oder per `occ config:app:set`, siehe README).
+- Unterstützt weiter Nextcloud 34 und 35.
 - **Umbau zur organisationsneutralen App „Kalender-Planung“.** App-ID `calendar_planning` statt `msp_planung`, Namespace
   `OCA\CalendarPlanning`, Eigenschaften im Termin `X-CALPLAN-…` statt `X-MSP-…`. Freigegeben von Ralf am 28.10.2026:
   Die App war bis dahin auf keiner Instanz installiert, es gibt keine gespeicherten Planungen, deshalb kein Rückfall auf
   die alten Namen (Begründung in `docs/KONZEPT.md`, Abschnitt 2). Ein altes Paket `msp_planung` vorher mit
-  `occ app:remove msp_planung` entfernen. Der nächste Release wird 1.0.0.
+  `occ app:remove msp_planung` entfernen.
 - Standardort und Kalender-Vorbelegung stehen nicht mehr im Code, sondern in den Admin-Einstellungen
   (`occ config:app:set calendar_planning ort_vorgabe --value …`, `kalender_muster`, `link_text`; siehe README).
   Ohne Einstellungen: freies Ortsfeld, erster Kalender vorbelegt.
