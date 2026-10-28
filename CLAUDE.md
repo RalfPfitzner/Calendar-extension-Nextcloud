@@ -26,6 +26,7 @@ Wie im Bestellportal und in der Goethe-Verwaltung: Listen seitenweise, scrollen 
 
 - Version steht in `appinfo/info.xml` **und** `package.json` (gleich halten), Änderungen in `CHANGELOG.md`.
 - Änderungen immer per Pull Request. **Tag setzt Ralf selbst**; der Release-Workflow baut dann `msp_planung-<version>.tar.gz` (`tools/paket.sh`) und hängt es an einen Release-Entwurf.
+- Standards für Repository, CI und sichere Programmierung aller Projekte: `docs/STANDARDS.md` im Repo `ralfpfitzner/test` (Vorlagen unter `vorlagen/`). Neue Regeln aus diesem Projekt dort nachtragen; Abweichungen hier mit Begründung.
 
 ## Datenschutz
 
