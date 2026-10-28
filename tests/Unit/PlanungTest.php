@@ -140,6 +140,17 @@ class PlanungTest extends TestCase {
 		$this->assertSame("Mitbringen: Laptop\n\nPlanung öffnen: {$neu}", $this->planung->lesen($umgezogen)['beschreibung']);
 	}
 
+	public function testGeaenderterLinktextErsetztDenAltenLink(): void {
+		$link = 'https://cloud.example.org/index.php/apps/calendar_planning/?kalender=3&termin=t1.ics';
+		$vorher = $this->planung->schreiben(self::ics("DESCRIPTION:Mitbringen: Laptop\r\n"), $this->eingabe(), $link);
+		$planung = new Planung(new Einstellungen(self::ORT_VORGABE, '', 'Zur Planung:'));
+		$nachher = $planung->schreiben($vorher, $this->eingabe([], $planung), $link);
+		$this->assertSame("Mitbringen: Laptop\n\nZur Planung: {$link}", $planung->lesen($nachher)['beschreibung']);
+		// Fremde Links in der Beschreibung bleiben stehen.
+		$fremd = $planung->schreiben(self::ics("DESCRIPTION:Infos: https://example.org/apps/andere/?kalender=1&termin=x\r\n"), $this->eingabe([], $planung), $link);
+		$this->assertStringStartsWith('Infos: https://example.org/apps/andere/', $planung->lesen($fremd)['beschreibung']);
+	}
+
 	public function testLinktextAusEinstellungen(): void {
 		$planung = new Planung(new Einstellungen(self::ORT_VORGABE, '', "Zur\tPlanung:"));
 		$neu = $planung->schreiben(self::ics(), $this->eingabe([], $planung), 'https://cloud.example.org/p');

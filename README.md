@@ -50,7 +50,7 @@ Unter **Verwaltung → Zusätzliche Einstellungen → Kalender-Planung** gibt es
 | `kalender_muster` | Namensfragment, nach dem die Kalenderauswahl vorbelegt wird (Groß-/Kleinschreibung egal). Leer: erster Kalender. | `occ config:app:set calendar_planning kalender_muster --value "Planung"` |
 | `link_text` | Text vor dem Link in der Terminbeschreibung. Vorgabe „Planung öffnen:“. | `occ config:app:set calendar_planning link_text --value "Zur Planung:"` |
 
-Jedes Konto merkt sich seine Kalenderauswahl zusätzlich selbst. Wird `link_text` später geändert, bleiben alte Link-Zeilen in den Beschreibungen stehen, bis der Termin erneut gespeichert wird.
+Jedes Konto merkt sich seine Kalenderauswahl zusätzlich selbst. Wird `link_text` später geändert, ersetzt das nächste Speichern eines Termins seine alte Link-Zeile; bis dahin steht sie unverändert in der Beschreibung.
 
 ### Felder des Planungsformulars
 

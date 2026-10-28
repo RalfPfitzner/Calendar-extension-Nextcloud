@@ -24,6 +24,9 @@ class Planung {
 	/** Höchstlänge je Feld (Zeichen), damit niemand versehentlich riesige Termine erzeugt. Das Schema darf weniger erlauben. */
 	public const MAX_LAENGE = Schema::MAX_LAENGE;
 
+	/** Zeile mit einem Link dieser App auf das Formular eines Termins (siehe KalenderService::link), egal mit welchem Linktext. */
+	private const LINK_MUSTER = '#^.*https?://\\S*/apps/calendar_planning/\\?kalender=\\d+&termin=\\S+\\s*$#';
+
 	/** Wert, mit dem ein angekreuztes Ja/Nein-Feld im Termin steht. */
 	public const JA = '1';
 
@@ -293,10 +296,11 @@ class Planung {
 			return;
 		}
 		$linkText = $this->einstellungen->linkText;
-		// Einen veralteten Link (z. B. nach Umzug der Instanz) ersetzen statt doppeln.
+		// Einen veralteten Link (z. B. nach Umzug der Instanz oder mit altem Linktext) ersetzen statt doppeln:
+		// Zeilen mit dem aktuellen Linktext oder mit einem Link dieser App auf das Formular.
 		$zeilen = array_filter(
 			explode("\n", $beschreibung),
-			fn (string $zeile) => !str_starts_with($zeile, $linkText),
+			fn (string $zeile) => !str_starts_with($zeile, $linkText) && preg_match(self::LINK_MUSTER, $zeile) !== 1,
 		);
 		$beschreibung = rtrim(implode("\n", $zeilen));
 		$ereignis->DESCRIPTION = ($beschreibung === '' ? '' : $beschreibung . "\n\n") . $linkText . $link;

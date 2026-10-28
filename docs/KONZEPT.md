@@ -43,11 +43,11 @@ Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist de
 - Ort ohne Standardort: ein freies Ortsfeld, leer erlaubt (`LOCATION` wird dann entfernt).
 - Die Schlüssel sind Datenformat. Wer im Schema einen Schlüssel ändert, trennt das Feld von bereits erfassten Werten; die App liest und löscht nur Eigenschaften, deren Schlüssel im aktuellen Schema stehen, alle anderen bleiben unangetastet.
 - Fremde Eigenschaften (Teilnehmende, Erinnerungen, Kategorien, `X-…` anderer Programme) bleiben unverändert.
-- Vor dem Umbau hieß das Präfix `X-MSP-`; weil die App bis dahin nirgends installiert war, gibt es keinen Rückfall auf diese Namen.
+- Vor dem Umbau hießen App-ID `msp_planung` und Präfix `X-MSP-`. **Umbenennung freigegeben von Ralf am 28.10.2026**, mit Jonas abgestimmt: Die App soll organisationsneutral auch für andere Instanzen taugen, und sie war bis dahin auf keiner Instanz installiert, es gab also keine gespeicherten Planungen. Deshalb gibt es keinen Rückfall auf die alten Namen und keine Umwandlung bestehender Termine. Die frühere Regel „Feldnamen nie umbenennen“ gilt ab hier für die Schlüssel in `schema/vorgabe.json` und das Präfix `X-CALPLAN-`.
 
 ## 3. Einstellungen (Admin)
 
-Einstellungsseite unter „Verwaltung → Zusätzliche Einstellungen“ (`lib/Settings/Admin.php`, Oberfläche `src/Admin.vue`), Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für Admins (ohne `NoAdminRequired`). Alle Werte in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen von `EinstellungenLader`, bereinigt in `Einstellungen` (einzeilig, ohne Steuerzeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben.
+Einstellungsseite unter „Verwaltung → Zusätzliche Einstellungen“ (`lib/Settings/Admin.php`, Oberfläche `src/Admin.vue`), Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für Admins (ohne `NoAdminRequired`). Alle Werte in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen und geschrieben von `EinstellungenSpeicher`, bereinigt in `Einstellungen` (einzeilig, ohne Steuerzeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben. Jede gespeicherte Änderung (Schema oder Vorgaben) geht als `CriticalActionPerformedEvent` an das Audit-Protokoll von Nextcloud (App `admin_audit`, falls aktiv: mit Konto und Zeit), nur mit der Zahl der Abschnitte und Felder, ohne Inhalte.
 
 | Schlüssel | Vorgabe | Wirkung |
 |---|---|---|
@@ -69,7 +69,7 @@ Die Oberfläche bekommt Standardort und Schema über `GET /api/einstellungen` (j
 | Frage (aus `historie/info.md`, Abschnitt 7) | Entscheidung | Begründung |
 |---|---|---|
 | Namen der Eigenschaften | wie in Abschnitt 2 | Deutsch, sprechend, ohne Umlaute (iCalendar erlaubt in Namen nur A–Z, 0–9 und „-“); eigener Vendor-Präfix `X-CALPLAN-`. |
-| Link „Planung öffnen“ automatisch oder manuell? | Automatisch beim ersten Speichern im Formular; ein Link mit veralteter Adresse wird ersetzt, nie verdoppelt. | Ein Link vor dem ersten Speichern ginge nur, wenn die App jeden neuen Termin anfasst. Das wäre ein Eingriff in fremde Termine, den niemand ausgelöst hat. |
+| Link „Planung öffnen“ automatisch oder manuell? | Automatisch beim ersten Speichern im Formular; ein Link mit veralteter Adresse oder altem Linktext wird ersetzt, nie verdoppelt (erkannt am Linktext oder an der Adresse `…/apps/calendar_planning/?kalender=…&termin=…`). | Ein Link vor dem ersten Speichern ginge nur, wenn die App jeden neuen Termin anfasst. Das wäre ein Eingriff in fremde Termine, den niemand ausgelöst hat. |
 | Druck-/PDF-Ansicht | noch nicht umgesetzt | optional laut Chat; nächster Schritt, wenn gewünscht. |
 
 Weitere Entscheidungen:

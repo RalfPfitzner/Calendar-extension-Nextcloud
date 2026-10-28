@@ -4,8 +4,9 @@
 
 ### Hinweise zum Update
 - **Umbau zur organisationsneutralen App „Kalender-Planung“.** App-ID `calendar_planning` statt `msp_planung`, Namespace
-  `OCA\CalendarPlanning`, Eigenschaften im Termin `X-CALPLAN-…` statt `X-MSP-…`. Die App war bis dahin nirgends
-  installiert, deshalb gibt es keinen Rückfall auf die alten Namen; ein altes Paket `msp_planung` vorher mit
+  `OCA\CalendarPlanning`, Eigenschaften im Termin `X-CALPLAN-…` statt `X-MSP-…`. Freigegeben von Ralf am 28.10.2026:
+  Die App war bis dahin auf keiner Instanz installiert, es gibt keine gespeicherten Planungen, deshalb kein Rückfall auf
+  die alten Namen (Begründung in `docs/KONZEPT.md`, Abschnitt 2). Ein altes Paket `msp_planung` vorher mit
   `occ app:remove msp_planung` entfernen. Der nächste Release wird 1.0.0.
 - Standardort und Kalender-Vorbelegung stehen nicht mehr im Code, sondern in den Admin-Einstellungen
   (`occ config:app:set calendar_planning ort_vorgabe --value …`, `kalender_muster`, `link_text`; siehe README).
@@ -13,6 +14,9 @@
 - Läuft jetzt auch auf Nextcloud 35 (`max-version` 35). Auf Nextcloud 34 ändert sich nichts.
 
 ### Geändert
+- Ändert der Admin den Linktext, ersetzt das nächste Speichern die alte Link-Zeile in der Terminbeschreibung, statt
+  eine zweite anzuhängen (erkannt an der Adresse des Formulars).
+- Änderungen an Feldschema und Vorgaben gehen an das Audit-Protokoll von Nextcloud (`admin_audit`), ohne Inhalte.
 - Feld „Benötigte Maschinen / Tools“ heißt „Benötigte Ausstattung / Technik“ (Schlüssel `ausstattung`), Abschnitt 4
   „Inhalte & Ausstattung“. Alle Namen, Texte und Testdaten sind frei von Organisationsbezügen; die Anforderungen des
   ersten Nutzers liegen unverändert in `docs/historie/info.md`.
