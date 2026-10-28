@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
-	<id>msp_planung</id>
-	<name>MSP-Planung</name>
+	<id>calendar_planning</id>
+	<name>Kalender-Planung</name>
 	<summary>Planung von Veranstaltungen direkt im Nextcloud-Kalender</summary>
-	<description>Erfasst die Planungsdaten der Veranstaltungen des Makerspace Mayen-Koblenz (Grunddaten, Kontakt, Gruppe, Inhalte, Hinweise) als Eigenschaften im Kalendertermin. Die Kalender-App bleibt unverändert.</description>
+	<description>Erfasst Planungsdaten zu Veranstaltungen als Eigenschaften im Kalendertermin. Welche Felder das Formular hat, legt der Admin in den Einstellungen fest (Vorgabe: Grunddaten, Kontakt, teilnehmende Gruppe, Inhalte, Hinweise), ebenso Standardort und Kalender-Vorbelegung. Die Kalender-App bleibt unverändert.</description>
 	<version>0.3.1</version>
 	<licence>GPL-3.0-or-later</licence>
 	<author mail="ralfpfitzner@googlemail.com">Ralf Pfitzner</author>
-	<namespace>MspPlanung</namespace>
+	<namespace>CalendarPlanning</namespace>
 	<category>office</category>
 	<bugs>https://github.com/RalfPfitzner/Calendar-extension-Nextcloud/issues</bugs>
 	<dependencies>
@@ -16,9 +16,12 @@
 	</dependencies>
 	<navigations>
 		<navigation>
-			<name>MSP-Planung</name>
-			<route>msp_planung.page.index</route>
+			<name>Kalender-Planung</name>
+			<route>calendar_planning.page.index</route>
 			<icon>app.svg</icon>
 		</navigation>
 	</navigations>
+	<settings>
+		<admin>OCA\CalendarPlanning\Settings\Admin</admin>
+	</settings>
 </info>

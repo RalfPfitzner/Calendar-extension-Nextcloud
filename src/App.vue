@@ -1,22 +1,24 @@
 <template>
-	<NcContent app-name="msp_planung">
+	<NcContent app-name="calendar_planning">
 		<NcAppContent>
-			<main class="msp">
+			<main class="planung">
 				<NcNoteCard v-if="fehler" type="error">
 					{{ fehler }}
 				</NcNoteCard>
-				<NcLoadingIcon v-else-if="kalender === null" :size="44" />
+				<NcLoadingIcon v-else-if="kalender === null || einstellungen === null" :size="44" />
 				<NcEmptyContent v-else-if="kalender.length === 0"
 					name="Kein Kalender gefunden"
-					description="Für dein Konto gibt es keinen Kalender. Lege einen in der Kalender-App an oder lass dir den MSP-Kalender freigeben." />
+					description="Für dein Konto gibt es keinen Kalender. Lege einen in der Kalender-App an oder lass dir den Planungskalender freigeben." />
 				<PlanungFormular v-else-if="zustand.termin"
 					:key="zustand.kalender + '/' + zustand.termin"
 					:kalender="Number(zustand.kalender)"
 					:termin="zustand.termin"
+					:einstellungen="einstellungen"
 					@zurueck="zurListe" />
 				<TerminListe v-else
 					:kalender-liste="kalender"
 					:zustand="zustand"
+					:einstellungen="einstellungen"
 					@aendern="aendern"
 					@oeffnen="oeffnen" />
 			</main>
@@ -33,10 +35,11 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import PlanungFormular from './components/PlanungFormular.vue'
 import TerminListe from './components/TerminListe.vue'
-import { fehlertext, kalenderLaden, kalenderWaehlen } from './api.js'
+import { einstellungenLaden, fehlertext, kalenderLaden, kalenderWaehlen } from './api.js'
 import { adresseLesen, adresseSchreiben } from './adresse.js'
 
 const kalender = ref(null)
+const einstellungen = ref(null)
 const fehler = ref('')
 const zustand = reactive(adresseLesen())
 
@@ -47,7 +50,7 @@ function zurueckTaste() {
 onMounted(async () => {
 	window.addEventListener('popstate', zurueckTaste)
 	try {
-		kalender.value = await kalenderLaden()
+		[kalender.value, einstellungen.value] = await Promise.all([kalenderLaden(), einstellungenLaden()])
 	} catch (e) {
 		fehler.value = fehlertext(e)
 		return
@@ -84,13 +87,13 @@ function zurListe() {
 </script>
 
 <style lang="scss">
-.msp {
+.planung {
 	padding: 8px 16px 24px 56px;
 	max-width: 1200px;
 }
 
 @media (max-width: 1024px) {
-	.msp {
+	.planung {
 		padding-left: 16px;
 		padding-top: 56px;
 	}

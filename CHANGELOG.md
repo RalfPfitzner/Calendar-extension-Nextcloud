@@ -2,6 +2,48 @@
 
 ## [Unveröffentlicht]
 
+### Hinweise zum Update
+- **Umbau zur organisationsneutralen App „Kalender-Planung“.** App-ID `calendar_planning` statt `msp_planung`, Namespace
+  `OCA\CalendarPlanning`, Eigenschaften im Termin `X-CALPLAN-…` statt `X-MSP-…`. Freigegeben von Ralf am 28.10.2026:
+  Die App war bis dahin auf keiner Instanz installiert, es gibt keine gespeicherten Planungen, deshalb kein Rückfall auf
+  die alten Namen (Begründung in `docs/KONZEPT.md`, Abschnitt 2). Ein altes Paket `msp_planung` vorher mit
+  `occ app:remove msp_planung` entfernen. Der nächste Release wird 1.0.0.
+- Standardort und Kalender-Vorbelegung stehen nicht mehr im Code, sondern in den Admin-Einstellungen
+  (`occ config:app:set calendar_planning ort_vorgabe --value …`, `kalender_muster`, `link_text`; siehe README).
+  Ohne Einstellungen: freies Ortsfeld, erster Kalender vorbelegt.
+
+### Hinzugefügt
+- **Feldschema vom Admin definierbar** (`lib/Service/Schema.php`): Abschnitte mit Feldern `{key, label, typ, pflicht,
+  maxlen, optionen, inListe}`, Typen Text (ein- oder mehrzeilig), E-Mail, Telefon, Zahl, Auswahl, Ja/Nein, Datum.
+  Höchstens 50 Felder, 3 Listenfelder, Schlüssel `[a-z][a-z0-9_]{0,30}`, daraus die Eigenschaft `X-CALPLAN-<SCHLÜSSEL>`.
+  Vorgabe `schema/vorgabe.json` (die 16 bisherigen Felder), Vorlage `schema/preset-msp.json` (Word-Vorlage des ersten
+  Nutzers).
+- Admin-Einstellungsseite unter „Verwaltung → Zusätzliche Einstellungen → Kalender-Planung“ (`lib/Settings/Admin.php`,
+  `src/Admin.vue`): Vorgaben (Standardort, Kalender-Vorbelegung, Linktext) und Editor für Abschnitte und Felder mit
+  „Vorgabe laden“ und „Vorlage laden“. Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für
+  Admins, Speichern mit Rate-Limit 30 pro Minute.
+- `lib/Service/Einstellungen.php` und `EinstellungenSpeicher.php`: Admin-Einstellungen über `OCP\IAppConfig`, beim Lesen
+  und Schreiben bereinigt (einzeilig, ohne Steuerzeichen, Länge gedeckelt); ein ungültig gespeichertes Schema fällt auf
+  die Vorgabe zurück und landet als Warnung im Protokoll.
+- `test-ui/admin.ui.test.mjs`: Browser-Test der Einstellungsseite (Feld anlegen, Grenze der Listenfelder, Vorlage laden).
+- `test-ui/sicherheit.test.mjs`: die Live-Prüfungen des Sicherheits-Audits vom 27.10.2026 (Anmeldung, CSRF, fremde
+  Kalender, private Termine, Nur-Lese-Freigabe, iCalendar-Injection, Eingabegrenzen, ETag, Host-Header, Antwort-Header)
+  laufen jetzt in der CI gegen beide Nextcloud-Versionen, erweitert um die Schema-Routen (Nicht-Admin 403, feindliche
+  Schlüssel und 51 Felder 400, Bezeichnungen als Text statt HTML).
+
+### Geändert
+- Ändert der Admin den Linktext, ersetzt das nächste Speichern die alte Link-Zeile in der Terminbeschreibung, statt
+  eine zweite anzuhängen (erkannt an der Adresse des Formulars).
+- Änderungen an Feldschema und Vorgaben gehen an das Audit-Protokoll von Nextcloud (`admin_audit`), ohne Inhalte.
+- Feld „Benötigte Maschinen / Tools“ heißt „Benötigte Ausstattung / Technik“ (Schlüssel `ausstattung`), Abschnitt 4
+  „Inhalte & Ausstattung“. Alle Namen, Texte und Testdaten sind frei von Organisationsbezügen; die Anforderungen des
+  ersten Nutzers liegen unverändert in `docs/historie/info.md`.
+- Neue Route `GET /api/einstellungen` liefert der Oberfläche Standardort und Feldschema.
+- Formular und Liste rendern aus dem Feldschema; die Liste zeigt neben Datum, Veranstaltung, Ort und Planung die
+  bis zu drei Felder mit `inListe` (Vorgabe: Zuständig intern, Organisation / Firma, Anzahl der Teilnehmenden).
+- Die Prüfung der Formularwerte folgt dem Schema: Typ (Zahl, E-Mail, Auswahl, Datum, Ja/Nein), Pflicht, Höchstlänge,
+  Optionen; Fehlermeldungen nennen die Bezeichnung des Feldes.
+
 ## [0.3.1] - 2026-10-28
 
 Erster Release mit Nextcloud 35. Inhaltlich der Stand, der als 0.3.0 gedacht war: Der Tag `v0.3.0` zeigt auf einen

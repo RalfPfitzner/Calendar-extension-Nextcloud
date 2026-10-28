@@ -5,3 +5,6 @@
 /build/
 .phpunit.cache/
 *.phpunit.result.cache
+
+# Lokale Start-Konfiguration der Claude-App
+/.claude/

@@ -1,4 +1,4 @@
-# Wöchentliche Update-PRs auf main (wie im Bestellportal MakerSpace und in der Goethe-Verwaltung)
+# Wöchentliche Update-PRs auf main (gleiches Muster wie in den anderen Repos des Autors)
 version: 2
 updates:
   - package-ecosystem: npm
@@ -13,7 +13,7 @@ updates:
       # TypeScript bleibt auf 5.x, 7.x bricht vite-plugin-dts (CLAUDE.md)
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
-      # Hauptversionen von @nextcloud/vue folgen den Nextcloud-Versionen; die App gibt es nur für Nextcloud 34
+      # Hauptversionen von @nextcloud/vue folgen den Nextcloud-Versionen; die App gibt es nur für Nextcloud 34 und 35
       - dependency-name: "@nextcloud/vue"
         update-types: ["version-update:semver-major"]
       # Vite 8 braucht @nextcloud/vite-config 3 (bisher nur Beta); beide zusammen in einem eigenen PR umstellen

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Startet eine Test-Nextcloud in Docker mit dieser App (aus dem Arbeitsverzeichnis) und der Kalender-App.
 # Danach laufen die Browser-Tests mit `npm run test:ui`. Nur für Tests, nie gegen eine echte Instanz.
-# Aufruf: tools/test-nextcloud.sh          (Container „msp-nc“ auf Port 8080, Nextcloud 35.0.2)
+# Aufruf: tools/test-nextcloud.sh          (Container „calplan-nc“ auf Port 8080, Nextcloud 35.0.2)
 #         NC_VERSION=34.0.5 KALENDER_VERSION=6.6.3 tools/test-nextcloud.sh   (andere Hauptversion)
 #         tools/test-nextcloud.sh --stopp  (Container entfernen)
 set -euo pipefail
 
-NAME=msp-nc
+NAME=calplan-nc
 PORT=${NC_PORT:-8080}
 NC_VERSION=${NC_VERSION:-35.0.2}
 NC_IMAGE=nextcloud:$NC_VERSION-apache
@@ -21,13 +21,13 @@ if [[ ${1:-} == --stopp ]]; then
 	exit 0
 fi
 
-[[ -f $APP/js/msp_planung-main.mjs ]] || { echo "Erst die Oberfläche bauen: npm ci && npm run build" >&2; exit 1; }
+[[ -f $APP/js/calendar_planning-main.mjs ]] || { echo "Erst die Oberfläche bauen: npm ci && npm run build" >&2; exit 1; }
 
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" -p "$PORT:80" \
 	-e SQLITE_DATABASE=nc -e NEXTCLOUD_ADMIN_USER=admin -e NEXTCLOUD_ADMIN_PASSWORD="$ADMIN_PASS" \
 	-e NEXTCLOUD_TRUSTED_DOMAINS="localhost 127.0.0.1" \
-	-v "$APP:/var/www/html/custom_apps/msp_planung:ro" "$NC_IMAGE" >/dev/null
+	-v "$APP:/var/www/html/custom_apps/calendar_planning:ro" "$NC_IMAGE" >/dev/null
 
 occ() { docker exec -u www-data "$NAME" php occ "$@"; }
 echo "Warte auf die Installation …"
@@ -40,13 +40,21 @@ occ status | grep -q 'installed: true' || { docker logs "$NAME" | tail -30; exit
 # Kalender-App aus dem GitHub-Release (der App-Store ist nicht überall erreichbar)
 tmp=$(mktemp -d)
 curl -fsSL "$KALENDER_APP" | tar xz -C "$tmp"
-docker cp "$tmp/calendar" "$NAME:/var/www/html/custom_apps/"
+# Unter Git Bash auf Windows braucht docker cp den Windows-Pfad (cygpath), sonst den POSIX-Pfad.
+docker cp "$(cygpath -w "$tmp" 2>/dev/null || echo "$tmp")/calendar" "$NAME:/var/www/html/custom_apps/"
 rm -rf "$tmp"
 docker exec "$NAME" chown -R www-data:www-data /var/www/html/custom_apps/calendar
 
 occ app:disable firstrunwizard >/dev/null
 occ app:enable calendar
-occ app:enable msp_planung
+occ app:enable calendar_planning
+# Einstellungen, wie ein Admin sie setzen würde; die Browser-Tests rechnen mit genau diesen Werten.
+occ config:app:set calendar_planning ort_vorgabe --value 'Vereinsheim' >/dev/null
+occ config:app:set calendar_planning kalender_muster --value 'Planung' >/dev/null
 docker exec -u www-data -e OC_PASS="$EVA_PASS" "$NAME" php occ user:add --password-from-env eva >/dev/null
+# Nextcloud-Oberfläche auf Englisch, damit die Bezeichnungen der Kalender-App in den Tests fest sind
+# (sonst speichert Nextcloud die Browsersprache des ersten Logins am Konto).
+occ user:setting admin core lang en
+occ user:setting eva core lang en
 NC_URL="http://localhost:$PORT" NC_USER=admin NC_PASS="$ADMIN_PASS" NC_EVA_PASS=x "$APP/tools/testdaten.sh"
 echo "Bereit: http://localhost:$PORT (admin / $ADMIN_PASS, eva / $EVA_PASS)"

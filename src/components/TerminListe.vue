@@ -21,7 +21,7 @@
 			</label>
 			<label class="liste__suche">
 				Suche
-				<input v-model="suche" type="search" placeholder="Titel, Kontakt, Zuständig …">
+				<input v-model="suche" type="search" placeholder="Titel, Ort, Planungsfelder …">
 			</label>
 		</div>
 		<p v-if="!zustand.von && !zustand.bis" class="liste__hinweis">
@@ -48,9 +48,9 @@
 								<th>Datum</th>
 								<th>Veranstaltung</th>
 								<th>Ort</th>
-								<th>Zuständig</th>
-								<th>Kontakt</th>
-								<th>TN</th>
+								<th v-for="feld in spalten" :key="feld.key">
+									{{ feld.label }}
+								</th>
 								<th>Planung</th>
 							</tr>
 						</thead>
@@ -68,9 +68,9 @@
 									{{ termin.titel || '(ohne Titel)' }}
 								</td>
 								<td>{{ termin.ort }}</td>
-								<td>{{ termin.zustaendig }}</td>
-								<td>{{ termin.kontakt }}</td>
-								<td>{{ termin.teilnehmende }}</td>
+								<td v-for="feld in spalten" :key="feld.key">
+									{{ anzeigeWert(feld, termin.felder[feld.key]) }}
+								</td>
 								<td>
 									<span :class="termin.geplant ? 'liste__status--geplant' : 'liste__status--offen'">
 										{{ termin.geplant ? 'erfasst' : 'offen' }}
@@ -92,19 +92,24 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import Seiten from './Seiten.vue'
 import { fehlertext, termineLaden } from '../api.js'
+import { anzeigeWert, listenFelder } from '../felder.js'
 import { zeitraumText } from '../datum.js'
 
 const props = defineProps({
 	kalenderListe: { type: Array, required: true },
 	zustand: { type: Object, required: true },
+	/** Einstellungen der App (GET /api/einstellungen); die Spalten kommen aus dem Feldschema. */
+	einstellungen: { type: Object, required: true },
 })
 const emit = defineEmits(['aendern', 'oeffnen'])
+
+const spalten = computed(() => listenFelder(props.einstellungen.schema))
 
 const daten = ref(null)
 const laedt = ref(false)

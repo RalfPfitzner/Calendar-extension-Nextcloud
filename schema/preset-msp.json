@@ -1,0 +1,46 @@
+{
+	"name": "Makerspace-Vorlage (Word-Vorlage „Planung alle Veranstaltungen“)",
+	"abschnitte": [
+		{
+			"titel": "1. Grunddaten",
+			"felder": [
+				{ "key": "zustaendig", "label": "Zuständig intern", "typ": "text", "inListe": true },
+				{ "key": "zufahrt", "label": "Parkmöglichkeiten / Zufahrt / Anlieferung", "typ": "textarea" },
+				{ "key": "raum", "label": "Raum-Informationen", "typ": "textarea" }
+			]
+		},
+		{
+			"titel": "2. Kontaktdaten",
+			"felder": [
+				{ "key": "kontakt_organisation", "label": "Organisation / Firma", "typ": "text", "inListe": true },
+				{ "key": "kontakt_name", "label": "Name", "typ": "text" },
+				{ "key": "kontakt_telefon", "label": "Telefon", "typ": "tel" },
+				{ "key": "kontakt_email", "label": "E-Mail", "typ": "email" },
+				{ "key": "kontakt_rolle", "label": "Rolle / Funktion", "typ": "text" }
+			]
+		},
+		{
+			"titel": "3. Teilnehmende Gruppe",
+			"felder": [
+				{ "key": "zielgruppe", "label": "Zielgruppe", "typ": "text" },
+				{ "key": "teilnehmende", "label": "Anzahl der Teilnehmenden", "typ": "text", "maxlen": 100, "inListe": true },
+				{ "key": "anforderungen", "label": "Besondere Anforderungen (z. B. Barrierefreiheit, Sprache, Aufsichtspflicht)", "typ": "textarea" }
+			]
+		},
+		{
+			"titel": "4. Inhalte & Werkzeuge",
+			"felder": [
+				{ "key": "inhalte", "label": "Geplante Inhalte / Themenschwerpunkte", "typ": "textarea" },
+				{ "key": "maschinen", "label": "Benötigte Maschinen / Tools", "typ": "textarea" },
+				{ "key": "material", "label": "Benötigtes Material (geschätzt)", "typ": "textarea" },
+				{ "key": "betreuung", "label": "Benötigte weitere Betreuung / Unterstützung", "typ": "textarea" }
+			]
+		},
+		{
+			"titel": "5. Hinweise",
+			"felder": [
+				{ "key": "hinweise", "label": "Besondere Wünsche / Hinweise / Anmerkungen", "typ": "textarea" }
+			]
+		}
+	]
+}

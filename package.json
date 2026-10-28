@@ -1,8 +1,8 @@
 {
-  "name": "msp_planung",
+  "name": "calendar_planning",
   "version": "0.3.1",
   "private": true,
-  "description": "MSP-Planung: Veranstaltungsplanung im Nextcloud-Kalender",
+  "description": "Kalender-Planung: Veranstaltungsplanung im Nextcloud-Kalender",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {

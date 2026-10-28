@@ -4,7 +4,7 @@ Was im Repo liegt, prüft die CI. Diese Punkte liegen in den GitHub-Einstellunge
 
 | Punkt | Stand | Soll | Wo |
 |---|---|---|---|
-| Beschreibung („About“) | leer | „Veranstaltungsplanung im Nextcloud-Kalender: Planungsfelder als Eigenschaften im Termin“ | Repo-Startseite → ⚙ neben „About“ |
+| Beschreibung („About“) | leer | „Veranstaltungsplanung im Nextcloud-Kalender: Planungsfelder als Eigenschaften im Termin, Felder und Vorgaben vom Admin einstellbar“ | Repo-Startseite → ⚙ neben „About“ |
 | Topics | keine | `nextcloud`, `nextcloud-app`, `calendar`, `caldav`, `php`, `vue` | ebenda |
 | Private Sicherheitsmeldung | **aus** | an, sonst zeigt `SECURITY.md` ins Leere | Settings → Security → Private vulnerability reporting |
 | Dependabot security updates | nicht sichtbar | an (ergänzt die wöchentlichen Update-PRs um sofortige Advisories) | Settings → Security → Dependabot |
@@ -17,7 +17,7 @@ Was im Repo liegt, prüft die CI. Diese Punkte liegen in den GitHub-Einstellunge
 
 ## Bekannter Dependabot-Alert ohne Fix: `elliptic`
 
-GHSA-848j-6mx2-7j84 (Low, CVSS 2.9) meldet `elliptic` ≤ 6.6.1 als transitive **Entwicklungs**-Abhängigkeit: `@nextcloud/vite-config` → `vite-plugin-node-polyfills` → `node-stdlib-browser` → `crypto-browserify` → `browserify-sign`/`create-ecdh` → `elliptic`. Es gibt keine gepatchte Version, und `@nextcloud/vite-config` 3.0.0-beta.1 zieht das Polyfill-Paket weiterhin. Das gebaute `js/msp_planung-main.mjs` enthält keinen Code aus `elliptic` (geprüft am 27.10.2026, 0 Treffer auf `elliptic|secp256k1|browserify-sign`); die App nutzt weder Kryptografie noch Node-Polyfills im Browser.
+GHSA-848j-6mx2-7j84 (Low, CVSS 2.9) meldet `elliptic` ≤ 6.6.1 als transitive **Entwicklungs**-Abhängigkeit: `@nextcloud/vite-config` → `vite-plugin-node-polyfills` → `node-stdlib-browser` → `crypto-browserify` → `browserify-sign`/`create-ecdh` → `elliptic`. Es gibt keine gepatchte Version, und `@nextcloud/vite-config` 3.0.0-beta.1 zieht das Polyfill-Paket weiterhin. Das gebaute `js/calendar_planning-main.mjs` und `js/calendar_planning-admin.mjs` enthält keinen Code aus `elliptic` (geprüft am 27.10.2026, 0 Treffer auf `elliptic|secp256k1|browserify-sign`); die App nutzt weder Kryptografie noch Node-Polyfills im Browser.
 
 Umgang: Alert mit Grund „Vulnerable code is not actually used“ schließen. Die Regel oben schließt künftige Alerts dieser Art von selbst; `npm audit --omit=dev` in der CI bleibt scharf für alles, was im Paket landet. Neu bewerten, sobald `@nextcloud/vite-config` ohne `vite-plugin-node-polyfills` auskommt oder `elliptic` eine korrigierte Version bekommt.
 
@@ -28,7 +28,7 @@ Alle mit `gh` als Repo-Besitzer. `REPO=RalfPfitzner/Calendar-extension-Nextcloud
 Beschreibung und Topics:
 
 ```bash
-gh repo edit "$REPO" --description "Veranstaltungsplanung im Nextcloud-Kalender: Planungsfelder als Eigenschaften im Termin" \
+gh repo edit "$REPO" --description "Veranstaltungsplanung im Nextcloud-Kalender: Planungsfelder als Eigenschaften im Termin, Felder und Vorgaben vom Admin einstellbar" \
   --add-topic nextcloud --add-topic nextcloud-app --add-topic calendar --add-topic caldav --add-topic php --add-topic vue
 ```
 

@@ -117,8 +117,8 @@ jobs:
       - name: Nextcloud-Protokoll bei Fehler
         if: failure()
         run: |
-          docker exec msp-nc cat /var/www/html/data/nextcloud.log | tail -50 || true
-          docker logs msp-nc | tail -50 || true
+          docker exec calplan-nc cat /var/www/html/data/nextcloud.log | tail -50 || true
+          docker logs calplan-nc | tail -50 || true
       - name: Paket bauen
         if: matrix.nextcloud == '35.0.2'
         run: tools/paket.sh

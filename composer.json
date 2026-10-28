@@ -1,11 +1,11 @@
 {
-	"name": "ralfpfitzner/msp_planung",
-	"description": "MSP-Planung: Veranstaltungsplanung im Nextcloud-Kalender",
+	"name": "ralfpfitzner/calendar_planning",
+	"description": "Kalender-Planung: Veranstaltungsplanung im Nextcloud-Kalender",
 	"license": "GPL-3.0-or-later",
 	"type": "project",
 	"autoload": {
 		"psr-4": {
-			"OCA\\MspPlanung\\": "lib/"
+			"OCA\\CalendarPlanning\\": "lib/"
 		}
 	},
 	"require": {
