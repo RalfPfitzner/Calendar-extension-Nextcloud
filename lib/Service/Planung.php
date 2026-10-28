@@ -292,10 +292,11 @@ class Planung {
 
 	private function linkEinfuegen(VEvent $ereignis, string $link): void {
 		$beschreibung = (string)($ereignis->DESCRIPTION ?? '');
-		if (str_contains($beschreibung, $link)) {
+		$linkText = $this->einstellungen->linkText;
+		// Schon da, wenn genau diese Zeile (aktueller Linktext plus Adresse) in der Beschreibung steht.
+		if (in_array($linkText . $link, explode("\n", $beschreibung), true)) {
 			return;
 		}
-		$linkText = $this->einstellungen->linkText;
 		// Einen veralteten Link (z. B. nach Umzug der Instanz oder mit altem Linktext) ersetzen statt doppeln:
 		// Zeilen mit dem aktuellen Linktext oder mit einem Link dieser App auf das Formular.
 		$zeilen = array_filter(
