@@ -27,7 +27,7 @@ Wie im Bestellportal und in der Goethe-Verwaltung: Listen seitenweise, scrollen 
 ## Versionen und Releases
 
 - Version steht in `appinfo/info.xml` **und** `package.json` (gleich halten), Änderungen in `CHANGELOG.md`.
-- Änderungen immer per Pull Request. **Tag setzt Ralf selbst**; der Release-Workflow baut dann `msp_planung-<version>.tar.gz` (`tools/paket.sh`) und hängt es an einen Release-Entwurf.
+- Änderungen immer per Pull Request. **Tag setzt Ralf selbst**; der Release-Workflow baut dann `msp_planung-<version>.tar.gz` (`tools/paket.sh`) und hängt es an einen Release-Entwurf. Die Release-Vorbereitung (Version in `appinfo/info.xml`, `package.json`, `package-lock.json`, CHANGELOG-Abschnitt) folgt dem Skill `release-vorbereitung`, immer vor dem Tag; sonst bricht der Release-Workflow ab und es gibt kein Paket.
 - Standards für Repository, CI und sichere Programmierung aller Projekte: `docs/STANDARDS.md` im Repo `ralfpfitzner/test` (Vorlagen unter `vorlagen/`). Neue Regeln aus diesem Projekt dort nachtragen; Abweichungen hier mit Begründung.
 
 ## Datenschutz
