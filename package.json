@@ -1,6 +1,6 @@
 {
   "name": "msp_planung",
-  "version": "0.2.1",
+  "version": "0.3.1",
   "private": true,
   "description": "MSP-Planung: Veranstaltungsplanung im Nextcloud-Kalender",
   "license": "GPL-3.0-or-later",
