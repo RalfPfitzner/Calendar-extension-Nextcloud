@@ -56,7 +56,7 @@ Weitere Entscheidungen:
 - **Terminserien:** Die Planung gilt für die ganze Serie und steht im Serien-Termin. Geänderte Einzeltermine einer Serie bekommen dieselben Planungsfelder. Titel und Ort übernehmen sie nur, wenn sie noch die alten Werte der Serie hatten. Die Liste zeigt eine Serie einmal, mit dem ersten Termin im Zeitraum.
 - **Kalenderauswahl:** Vorbelegt ist der erste Kalender mit „MSP“ im Namen; eine andere Auswahl merkt sich die App je Konto (Nutzereinstellung `kalender` über `IUserConfig`).
 - **Keine Scheduling-Mails:** Das Speichern der Planung verschickt keine Einladungs-Updates an Teilnehmende (läuft am CalDAV-Server vorbei). Termin-Zeiten ändert die App ohnehin nicht.
-- **Geprüft in der Test-Nextcloud 34.0.5 mit Kalender-App 6.6.3 (vorher 32.0.5 mit 6.0.3 und 6.6.2):** Bearbeiten eines Termins in der Kalender-App lässt die `X-MSP-…`-Eigenschaften stehen, und der Link in der Beschreibung ist dort anklickbar. Der Browser-Test „Kalender-App: Bearbeiten des Termins lässt die Planung stehen“ prüft das bei jedem Lauf. Die Kalender-App 6.6.x läuft auf Nextcloud 32 bis 35.
+- **Geprüft in den Test-Nextclouds 34.0.5 mit Kalender-App 6.6.3 und 35.0.2 mit Kalender-App 6.6.4 (vorher 32.0.5 mit 6.0.3 und 6.6.2):** Bearbeiten eines Termins in der Kalender-App lässt die `X-MSP-…`-Eigenschaften stehen, und der Link in der Beschreibung ist dort anklickbar. Der Browser-Test „Kalender-App: Bearbeiten des Termins lässt die Planung stehen“ prüft das bei jedem Lauf. Die Kalender-App 6.6.x läuft auf Nextcloud 32 bis 35.
 
 ## 4. Datenschutz
 

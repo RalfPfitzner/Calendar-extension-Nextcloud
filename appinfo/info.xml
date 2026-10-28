@@ -12,7 +12,7 @@
 	<category>office</category>
 	<bugs>https://github.com/RalfPfitzner/Calendar-extension-Nextcloud/issues</bugs>
 	<dependencies>
-		<nextcloud min-version="34" max-version="34"/>
+		<nextcloud min-version="34" max-version="35"/>
 	</dependencies>
 	<navigations>
 		<navigation>

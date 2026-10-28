@@ -51,6 +51,15 @@ class Planung {
 	public const MAX_LAENGE = 5000;
 
 	/**
+	 * Felder, die im Formular einzeilig sind (muss zu `mehrzeilig` in src/felder.js passen).
+	 * Zeilenumbrüche darin werden zu Leerzeichen, damit kein Titel mit Umbruch in der Kalender-App landet.
+	 */
+	public const EINZEILIG = [
+		'titel', 'zustaendig', 'kontakt_organisation', 'kontakt_name', 'kontakt_telefon',
+		'kontakt_email', 'kontakt_rolle', 'zielgruppe', 'teilnehmende',
+	];
+
+	/**
 	 * Liest Termindaten und Planung aus einem Kalenderobjekt.
 	 *
 	 * @param DateTimeInterface|null $von  mit $bis: bei Serien den ersten Termin im Zeitraum ermitteln
@@ -157,7 +166,16 @@ class Planung {
 			if (!is_string($wert) && !is_int($wert)) {
 				throw new PlanungException("Feld „{$feld}“ ist kein Text");
 			}
-			$wert = trim(str_replace("\r\n", "\n", (string)$wert));
+			$wert = str_replace("\r\n", "\n", (string)$wert);
+			if (in_array($feld, self::EINZEILIG, true)) {
+				// Umbrüche und Tabs zu einem Leerzeichen, sonstige Steuerzeichen raus.
+				$wert = (string)preg_replace('/[\r\n\t]+/', ' ', $wert);
+				$wert = (string)preg_replace('/\p{Cc}/u', '', $wert);
+			} else {
+				// Mehrzeilig: Umbruch und Tab bleiben, alle anderen Steuerzeichen raus.
+				$wert = (string)preg_replace('/[^\P{Cc}\n\t]/u', '', $wert);
+			}
+			$wert = trim($wert);
 			if (mb_strlen($wert) > self::MAX_LAENGE) {
 				throw new PlanungException("Feld „{$feld}“ ist zu lang (höchstens " . self::MAX_LAENGE . ' Zeichen)');
 			}

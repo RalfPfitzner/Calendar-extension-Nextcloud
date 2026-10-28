@@ -164,4 +164,18 @@ class PlanungTest extends TestCase {
 	public function testPruefenNurEchtesTrueIstExtern(): void {
 		$this->assertFalse($this->eingabe(['ort_extern' => 'true', 'ort' => 'x'])['ort_extern']);
 	}
+
+	public function testPruefenSteuerzeichen(): void {
+		$planung = $this->eingabe([
+			'titel' => "Löt\r\nworkshop\tGrundschule\x00\x1b",
+			'kontakt_name' => "Eva\nMuster",
+			'hinweise' => "Zeile 1\r\nZeile 2\tTab\x00\x07Ende",
+		]);
+		// Einzeilig: Umbruch und Tab werden Leerzeichen, andere Steuerzeichen verschwinden.
+		$this->assertSame('Löt workshop Grundschule', $planung['titel']);
+		$this->assertSame('Eva Muster', $planung['kontakt_name']);
+		// Mehrzeilig: Umbruch und Tab bleiben, andere Steuerzeichen verschwinden.
+		$this->assertSame("Zeile 1\nZeile 2\tTabEnde", $planung['hinweise']);
+		$this->assertEmpty(array_diff(Planung::EINZEILIG, ['titel', ...array_keys(Planung::FELDER)]), 'EINZEILIG nennt nur bekannte Felder');
+	}
 }

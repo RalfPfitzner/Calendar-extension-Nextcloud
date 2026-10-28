@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Startet eine Test-Nextcloud 34.0.5 in Docker mit dieser App (aus dem Arbeitsverzeichnis) und der Kalender-App.
+# Startet eine Test-Nextcloud in Docker mit dieser App (aus dem Arbeitsverzeichnis) und der Kalender-App.
 # Danach laufen die Browser-Tests mit `npm run test:ui`. Nur für Tests, nie gegen eine echte Instanz.
-# Aufruf: tools/test-nextcloud.sh          (Container „msp-nc“ auf Port 8080)
+# Aufruf: tools/test-nextcloud.sh          (Container „msp-nc“ auf Port 8080, Nextcloud 35.0.2)
+#         NC_VERSION=34.0.5 KALENDER_VERSION=6.6.3 tools/test-nextcloud.sh   (andere Hauptversion)
 #         tools/test-nextcloud.sh --stopp  (Container entfernen)
 set -euo pipefail
 
 NAME=msp-nc
 PORT=${NC_PORT:-8080}
-NC_IMAGE=nextcloud:34.0.5-apache
-KALENDER_VERSION=${KALENDER_VERSION:-6.6.3}
+NC_VERSION=${NC_VERSION:-35.0.2}
+NC_IMAGE=nextcloud:$NC_VERSION-apache
+KALENDER_VERSION=${KALENDER_VERSION:-6.6.4}
 KALENDER_APP=https://github.com/nextcloud-releases/calendar/releases/download/v$KALENDER_VERSION/calendar-v$KALENDER_VERSION.tar.gz
 ADMIN_PASS=Admin-Test-123
 EVA_PASS=Eva-Test-12345

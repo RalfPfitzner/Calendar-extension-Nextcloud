@@ -30,10 +30,74 @@ jobs:
       - name: Unit-Tests
         run: composer test:unit
 
-  # Echte Nextcloud 34.0.5 mit Kalender-App in Docker, Browser-Tests mit Playwright
+  # Passt die App zu den Schnittstellen jeder unterstützten Nextcloud-Version? (PHPStan gegen nextcloud/ocp
+  # in genau dieser Version plus die genutzten Klassen aus apps/dav)
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        nextcloud: ['34.0.5', '35.0.2']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: composer install --no-interaction --no-progress
+      - name: API-Check
+        run: tools/api-check.sh "${{ matrix.nextcloud }}"
+
+  # Laufzeit-Abhängigkeiten des Bundles gegen bekannte Schwachstellen, bei jedem Lauf statt nur wöchentlich
+  npm-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm audit --package-lock-only --omit=dev --audit-level=high
+
+  # Die Workflow-Dateien selbst prüfen: Syntax, Ausdrücke, Shell in run-Schritten
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+
+  # Neue oder geänderte Abhängigkeiten eines Pull Requests gegen die GitHub-Advisory-Datenbank prüfen
+  abhaengigkeiten:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+
+  # Echte Nextcloud mit Kalender-App in Docker, Browser-Tests mit Playwright, je unterstützter Hauptversion
   nextcloud:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nextcloud: 34.0.5
+            kalender: 6.6.3
+          - nextcloud: 35.0.2
+            kalender: 6.6.4
+    env:
+      NC_VERSION: ${{ matrix.nextcloud }}
+      KALENDER_VERSION: ${{ matrix.kalender }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -56,4 +120,22 @@ jobs:
           docker exec msp-nc cat /var/www/html/data/nextcloud.log | tail -50 || true
           docker logs msp-nc | tail -50 || true
       - name: Paket bauen
+        if: matrix.nextcloud == '35.0.2'
         run: tools/paket.sh
+
+  # Ein Pflicht-Check für alle Jobs. Wer einen Branch-Schutz einrichtet, verlangt nur „gate“;
+  # die Matrix darf sich dann ändern, ohne den Schutz nachzuziehen. `if: always()` ist nötig,
+  # sonst läuft der Job bei einem Fehlschlag gar nicht und der Check bleibt ewig „ausstehend“.
+  gate:
+    runs-on: ubuntu-latest
+    needs: [php, api, npm-audit, actionlint, nextcloud]
+    if: always()
+    steps:
+      - name: Scheitern, wenn ein Job nicht erfolgreich war
+        if: >-
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled') ||
+          contains(needs.*.result, 'skipped')
+        run: |
+          echo "php=${{ needs.php.result }} api=${{ needs.api.result }} npm-audit=${{ needs.npm-audit.result }} actionlint=${{ needs.actionlint.result }} nextcloud=${{ needs.nextcloud.result }}"
+          exit 1

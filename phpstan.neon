@@ -1,0 +1,21 @@
+# Statische Prüfung der App gegen die Nextcloud-Schnittstellen.
+# Aufruf über tools/api-check.sh <nextcloud-version>: das Skript holt die passende OCP-Fassung
+# (Paket nextcloud/ocp, ohne Autoloader, deshalb scanDirectories) und die zwei genutzten Klassen
+# aus apps/dav nach build/nextcloud-api/oca.
+parameters:
+	level: 6
+	paths:
+		- lib
+	scanDirectories:
+		- vendor/nextcloud/ocp/OCP
+		- build/nextcloud-api/oca
+	treatPhpDocTypesAsCertain: false
+	ignoreErrors:
+		# CalDavBackend liefert untypisierte Arrays; die Struktur ist in KalenderService dokumentiert.
+		- identifier: missingType.iterableValue
+		# JSONResponse/TemplateResponse sind generisch (Status, Daten, Header); die Angabe je Methode bringt hier nichts.
+		- identifier: missingType.generics
+		# sabre/vobject bietet iCalendar-Eigenschaften als magische Properties an (SUMMARY, DTSTART, X-…).
+		-
+			identifier: property.notFound
+			message: '#Sabre\\VObject\\Component\\VEvent::\$#'

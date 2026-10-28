@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitslücke
+    url: https://github.com/RalfPfitzner/Calendar-extension-Nextcloud/security/advisories/new
+    about: Bitte privat melden, nie als öffentliches Issue. Was als Lücke zählt, steht in SECURITY.md.
