@@ -5,7 +5,7 @@
 	<name>MSP-Planung</name>
 	<summary>Planung von Veranstaltungen direkt im Nextcloud-Kalender</summary>
 	<description>Erfasst die Planungsdaten der Veranstaltungen des Makerspace Mayen-Koblenz (Grunddaten, Kontakt, Gruppe, Inhalte, Hinweise) als Eigenschaften im Kalendertermin. Die Kalender-App bleibt unverändert.</description>
-	<version>0.2.1</version>
+	<version>0.3.1</version>
 	<licence>GPL-3.0-or-later</licence>
 	<author mail="ralfpfitzner@googlemail.com">Ralf Pfitzner</author>
 	<namespace>MspPlanung</namespace>

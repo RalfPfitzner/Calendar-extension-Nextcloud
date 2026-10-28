@@ -2,8 +2,16 @@
 
 ## [Unveröffentlicht]
 
+## [0.3.1] - 2026-10-28
+
+Erster Release mit Nextcloud 35. Inhaltlich der Stand, der als 0.3.0 gedacht war: Der Tag `v0.3.0` zeigt auf einen
+Commit, in dem die Version noch 0.2.1 hieß, der Release-Workflow hat deshalb kein Paket gebaut. `v0.3.0` bleibt als
+Tag stehen (Tags werden nie verschoben), hat aber kein Paket; installiert wird 0.3.1.
+
 ### Hinweise zum Update
 - Läuft jetzt auch auf Nextcloud 35 (`max-version` 35). Auf Nextcloud 34 ändert sich nichts.
+- Paket `msp_planung-0.3.1.tar.gz`; Herkunft prüfen mit
+  `gh attestation verify msp_planung-0.3.1.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
 
 ### Geändert
 - `gate` wartet jetzt auch auf `abhaengigkeiten` (dependency-review): Eine neue verwundbare Abhängigkeit in einem
