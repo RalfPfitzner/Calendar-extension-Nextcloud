@@ -1,6 +1,6 @@
 {
   "name": "calendar_planning",
-  "version": "0.2.1",
+  "version": "0.3.1",
   "private": true,
   "description": "Kalender-Planung: Veranstaltungsplanung im Nextcloud-Kalender",
   "license": "GPL-3.0-or-later",

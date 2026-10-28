@@ -11,41 +11,6 @@
 - Standardort und Kalender-Vorbelegung stehen nicht mehr im Code, sondern in den Admin-Einstellungen
   (`occ config:app:set calendar_planning ort_vorgabe --value …`, `kalender_muster`, `link_text`; siehe README).
   Ohne Einstellungen: freies Ortsfeld, erster Kalender vorbelegt.
-- Läuft jetzt auch auf Nextcloud 35 (`max-version` 35). Auf Nextcloud 34 ändert sich nichts.
-
-### Geändert
-- Ändert der Admin den Linktext, ersetzt das nächste Speichern die alte Link-Zeile in der Terminbeschreibung, statt
-  eine zweite anzuhängen (erkannt an der Adresse des Formulars).
-- Änderungen an Feldschema und Vorgaben gehen an das Audit-Protokoll von Nextcloud (`admin_audit`), ohne Inhalte.
-- Feld „Benötigte Maschinen / Tools“ heißt „Benötigte Ausstattung / Technik“ (Schlüssel `ausstattung`), Abschnitt 4
-  „Inhalte & Ausstattung“. Alle Namen, Texte und Testdaten sind frei von Organisationsbezügen; die Anforderungen des
-  ersten Nutzers liegen unverändert in `docs/historie/info.md`.
-- Neue Route `GET /api/einstellungen` liefert der Oberfläche Standardort und Feldschema.
-- Formular und Liste rendern aus dem Feldschema; die Liste zeigt neben Datum, Veranstaltung, Ort und Planung die
-  bis zu drei Felder mit `inListe` (Vorgabe: Zuständig intern, Organisation / Firma, Anzahl der Teilnehmenden).
-- Die Prüfung der Formularwerte folgt dem Schema: Typ (Zahl, E-Mail, Auswahl, Datum, Ja/Nein), Pflicht, Höchstlänge,
-  Optionen; Fehlermeldungen nennen die Bezeichnung des Feldes.
-- `gate` wartet jetzt auch auf `abhaengigkeiten` (dependency-review): Eine neue verwundbare Abhängigkeit in einem
-  Pull Request lässt den Pflicht-Check scheitern; bei push und im Release ist der übersprungene Job erlaubt.
-- `appinfo/info.xml` erlaubt Nextcloud 34 bis 35. Gegen Nextcloud 35.0.2 mit Kalender-App 6.6.4 geprüft: die vier
-  genutzten Methoden von `CalDavBackend` sowie `CalendarImpl` und `IUserConfig` sind unverändert; Anmeldung, CSRF,
-  Kalender-Rechte, private Termine, Nur-Lese-Freigaben, iCalendar-Escaping und Eingabegrenzen verhalten sich wie auf 34.
-- Die CI testet in Docker gegen beide Hauptversionen (34.0.5 mit Kalender-App 6.6.3, 35.0.2 mit 6.6.4).
-  `tools/test-nextcloud.sh` nimmt `NC_VERSION` (Vorgabe 35.0.2) und `KALENDER_VERSION` (Vorgabe 6.6.4).
-- Die CI prüft die Workflow-Dateien mit actionlint, neue Abhängigkeiten in Pull Requests gegen die
-  GitHub-Advisory-Datenbank (dependency-review) und fasst alle Jobs im Job `gate` zusammen, der sich als einziger
-  Pflicht-Check für einen Branch-Schutz eignet.
-
-- Rate-Limits je Konto auf `termine` und `termin` (120 pro Minute) und `speichern` (30 pro Minute) über
-  `#[UserRateLimit]`; Nextcloud antwortet darüber mit 429. Die Oberfläche bleibt weit darunter.
-- Einzeilige Felder (Titel, Zuständig, Kontaktdaten, Zielgruppe, Teilnehmende) verwandeln Zeilenumbrüche und Tabs in
-  Leerzeichen; sonstige Steuerzeichen werden in allen Feldern entfernt. Vorher konnte ein Titel mit Umbruch in der
-  Kalender-App landen.
-- `composer.json` verlangt PHP 8.2 (Minimum von Nextcloud 34, vorher stand 8.1); die Entwicklungsabhängigkeiten
-  lösen gegen PHP 8.3 auf.
-- Der Release-Workflow attestiert das Paket (Build-Provenance über Sigstore) und schreibt die SHA-256-Summe in die
-  Release-Notes. Prüfen mit `gh attestation verify calendar_planning-<version>.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
-- Die CI prüft die Laufzeit-Abhängigkeiten des Bundles mit `npm audit` (ab Schwere „high“) bei jedem Lauf.
 
 ### Hinzugefügt
 - **Feldschema vom Admin definierbar** (`lib/Service/Schema.php`): Abschnitte mit Feldern `{key, label, typ, pflicht,
@@ -65,6 +30,55 @@
   Kalender, private Termine, Nur-Lese-Freigabe, iCalendar-Injection, Eingabegrenzen, ETag, Host-Header, Antwort-Header)
   laufen jetzt in der CI gegen beide Nextcloud-Versionen, erweitert um die Schema-Routen (Nicht-Admin 403, feindliche
   Schlüssel und 51 Felder 400, Bezeichnungen als Text statt HTML).
+
+### Geändert
+- Ändert der Admin den Linktext, ersetzt das nächste Speichern die alte Link-Zeile in der Terminbeschreibung, statt
+  eine zweite anzuhängen (erkannt an der Adresse des Formulars).
+- Änderungen an Feldschema und Vorgaben gehen an das Audit-Protokoll von Nextcloud (`admin_audit`), ohne Inhalte.
+- Feld „Benötigte Maschinen / Tools“ heißt „Benötigte Ausstattung / Technik“ (Schlüssel `ausstattung`), Abschnitt 4
+  „Inhalte & Ausstattung“. Alle Namen, Texte und Testdaten sind frei von Organisationsbezügen; die Anforderungen des
+  ersten Nutzers liegen unverändert in `docs/historie/info.md`.
+- Neue Route `GET /api/einstellungen` liefert der Oberfläche Standardort und Feldschema.
+- Formular und Liste rendern aus dem Feldschema; die Liste zeigt neben Datum, Veranstaltung, Ort und Planung die
+  bis zu drei Felder mit `inListe` (Vorgabe: Zuständig intern, Organisation / Firma, Anzahl der Teilnehmenden).
+- Die Prüfung der Formularwerte folgt dem Schema: Typ (Zahl, E-Mail, Auswahl, Datum, Ja/Nein), Pflicht, Höchstlänge,
+  Optionen; Fehlermeldungen nennen die Bezeichnung des Feldes.
+
+## [0.3.1] - 2026-10-28
+
+Erster Release mit Nextcloud 35. Inhaltlich der Stand, der als 0.3.0 gedacht war: Der Tag `v0.3.0` zeigt auf einen
+Commit, in dem die Version noch 0.2.1 hieß, der Release-Workflow hat deshalb kein Paket gebaut. `v0.3.0` bleibt als
+Tag stehen (Tags werden nie verschoben), hat aber kein Paket; installiert wird 0.3.1.
+
+### Hinweise zum Update
+- Läuft jetzt auch auf Nextcloud 35 (`max-version` 35). Auf Nextcloud 34 ändert sich nichts.
+- Paket `msp_planung-0.3.1.tar.gz`; Herkunft prüfen mit
+  `gh attestation verify msp_planung-0.3.1.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
+
+### Geändert
+- `gate` wartet jetzt auch auf `abhaengigkeiten` (dependency-review): Eine neue verwundbare Abhängigkeit in einem
+  Pull Request lässt den Pflicht-Check scheitern; bei push und im Release ist der übersprungene Job erlaubt.
+- `appinfo/info.xml` erlaubt Nextcloud 34 bis 35. Gegen Nextcloud 35.0.2 mit Kalender-App 6.6.4 geprüft: die vier
+  genutzten Methoden von `CalDavBackend` sowie `CalendarImpl` und `IUserConfig` sind unverändert; Anmeldung, CSRF,
+  Kalender-Rechte, private Termine, Nur-Lese-Freigaben, iCalendar-Escaping und Eingabegrenzen verhalten sich wie auf 34.
+- Die CI testet in Docker gegen beide Hauptversionen (34.0.5 mit Kalender-App 6.6.3, 35.0.2 mit 6.6.4).
+  `tools/test-nextcloud.sh` nimmt `NC_VERSION` (Vorgabe 35.0.2) und `KALENDER_VERSION` (Vorgabe 6.6.4).
+- Die CI prüft die Workflow-Dateien mit actionlint, neue Abhängigkeiten in Pull Requests gegen die
+  GitHub-Advisory-Datenbank (dependency-review) und fasst alle Jobs im Job `gate` zusammen, der sich als einziger
+  Pflicht-Check für einen Branch-Schutz eignet.
+
+- Rate-Limits je Konto auf `termine` und `termin` (120 pro Minute) und `speichern` (30 pro Minute) über
+  `#[UserRateLimit]`; Nextcloud antwortet darüber mit 429. Die Oberfläche bleibt weit darunter.
+- Einzeilige Felder (Titel, Zuständig, Kontaktdaten, Zielgruppe, Teilnehmende) verwandeln Zeilenumbrüche und Tabs in
+  Leerzeichen; sonstige Steuerzeichen werden in allen Feldern entfernt. Vorher konnte ein Titel mit Umbruch in der
+  Kalender-App landen.
+- `composer.json` verlangt PHP 8.2 (Minimum von Nextcloud 34, vorher stand 8.1); die Entwicklungsabhängigkeiten
+  lösen gegen PHP 8.3 auf.
+- Der Release-Workflow attestiert das Paket (Build-Provenance über Sigstore) und schreibt die SHA-256-Summe in die
+  Release-Notes. Prüfen mit `gh attestation verify msp_planung-<version>.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
+- Die CI prüft die Laufzeit-Abhängigkeiten des Bundles mit `npm audit` (ab Schwere „high“) bei jedem Lauf.
+
+### Hinzugefügt
 - `tools/api-check.sh` und `phpstan.neon`: PHPStan (Level 6) gegen `nextcloud/ocp` in genau der geprüften Version plus
   `CalDavBackend` und `CalendarImpl` aus dem Server-Repo. Die CI fährt das für 34.0.5 und 35.0.2; ein Wechsel der
   Nextcloud-Schnittstellen fällt damit in der CI auf, nicht erst auf der Instanz.
