@@ -2,6 +2,11 @@
 
 ## [Unveröffentlicht]
 
+### Geändert
+- `follow-redirects` 1.16.1 → 1.16.2 (über `@nextcloud/axios` → `axios`) wegen GHSA-mrwp-f3q8-3g9p
+  (CVE-2026-116689, „high“). Die Lücke steckt im Node-HTTP-Weg; das gebaute Bundle enthält `follow-redirects` nicht,
+  die App war also nicht betroffen. Ohne Update schlägt aber die Prüfung `npm audit` (ab „high“) in der CI fehl.
+
 ## [1.0.0] - 2026-10-28
 
 Aus „MSP-Planung“ wird die organisationsneutrale App „Kalender-Planung“ (`calendar_planning`): Felder, Standardort
