@@ -1,6 +1,6 @@
 # Kalender-Planung (Calendar-extension-Nextcloud) – Hinweise für Claude
 
-Nextcloud-App zur Veranstaltungsplanung: Die Planungsdaten zu einem Termin werden direkt im Kalendertermin gepflegt. Die App ist organisationsneutral; Standardort, Kalender-Vorbelegung und Linktext setzt der Admin. Entscheidungen der Umsetzung, Datenformat und offene Punkte: `docs/KONZEPT.md`. Die Anforderungen des ersten Nutzers (Planungs-Chat vom 20.10.2026) liegen unverändert in `docs/historie/info.md` (nicht ändern). Sprache in Code-Kommentaren, Commits, Doku und Antworten: Deutsch.
+Nextcloud-App zur Veranstaltungsplanung: Die Planungsdaten zu einem Termin werden direkt im Kalendertermin gepflegt. Die App ist organisationsneutral; Standardort, Kalender-Vorbelegung und Linktext setzt der Admin. Entscheidungen der Umsetzung, Datenformat und offene Punkte: `docs/KONZEPT.md`. Die Anforderungen des ersten Nutzers (Planungs-Chat vom 20.10.2026) liegen in `docs/historie/info.md` (nicht ändern; einzige Änderung: Name der Anforderin am 02.11.2026 entfernt). Sprache in Code-Kommentaren, Commits, Doku und Antworten: Deutsch.
 
 ## Architektur
 

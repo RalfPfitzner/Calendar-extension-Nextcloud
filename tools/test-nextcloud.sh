@@ -23,7 +23,7 @@ KALENDER_APP=https://github.com/nextcloud-releases/calendar/releases/download/v$
 IMPERSONATE_VERSION=${IMPERSONATE_VERSION:-$IMPERSONATE_VORGABE}
 IMPERSONATE_APP=https://github.com/nextcloud-releases/impersonate/releases/download/v$IMPERSONATE_VERSION/impersonate-v$IMPERSONATE_VERSION.tar.gz
 ADMIN_PASS=Admin-Test-123
-EVA_PASS=Eva-Test-12345
+KIM_PASS=Kim-Test-12345
 APP=$(cd "$(dirname "$0")/.." && pwd)
 
 if [[ ${1:-} == --stopp ]]; then
@@ -113,10 +113,10 @@ occ app:enable calendar_planning
 # Einstellungen, wie ein Admin sie setzen würde; die Browser-Tests rechnen mit genau diesen Werten.
 occ config:app:set calendar_planning ort_vorgabe --value 'Vereinsheim' >/dev/null
 occ config:app:set calendar_planning kalender_muster --value 'Planung' >/dev/null
-docker exec -u www-data -e OC_PASS="$EVA_PASS" "$NAME" php occ user:add --password-from-env eva >/dev/null
+docker exec -u www-data -e OC_PASS="$KIM_PASS" "$NAME" php occ user:add --password-from-env kim >/dev/null
 # Nextcloud-Oberfläche auf Englisch, damit die Bezeichnungen der Kalender-App in den Tests fest sind
 # (sonst speichert Nextcloud die Browsersprache des ersten Logins am Konto).
 occ user:setting admin core lang en
-occ user:setting eva core lang en
-NC_URL="http://localhost:$PORT" NC_USER=admin NC_PASS="$ADMIN_PASS" NC_EVA_PASS=x "$APP/tools/testdaten.sh"
-echo "Bereit: http://localhost:$PORT (admin / $ADMIN_PASS, eva / $EVA_PASS)"
+occ user:setting kim core lang en
+NC_URL="http://localhost:$PORT" NC_USER=admin NC_PASS="$ADMIN_PASS" NC_KIM_PASS=x "$APP/tools/testdaten.sh"
+echo "Bereit: http://localhost:$PORT (admin / $ADMIN_PASS, kim / $KIM_PASS)"

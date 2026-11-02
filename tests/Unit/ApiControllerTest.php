@@ -16,7 +16,7 @@ use Psr\Log\AbstractLogger;
 
 /** S-KAL-01: Unerwartete Fehler landen ohne Termininhalt und ohne Ausnahme-Objekt im Protokoll. */
 class ApiControllerTest extends TestCase {
-	private const GEHEIM = 'Geheimer Termin mit eva.muster@example.org, Tel. 0123 456789';
+	private const GEHEIM = 'Geheimer Termin mit kim.muster@example.org, Tel. 0123 456789';
 
 	/** @var list<array{0:mixed,1:string,2:array<mixed>}> */
 	private array $protokoll = [];

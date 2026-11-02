@@ -10,12 +10,12 @@ import { chromium, request } from 'playwright-core'
 const BASIS = process.env.NC_URL ?? 'http://localhost:8080'
 const NUTZER = process.env.NC_USER ?? 'admin'
 const PASSWORT = process.env.NC_PASS ?? 'Admin-Test-123'
-const EVA_PASSWORT = process.env.NC_EVA_PASS ?? 'Eva-Test-12345'
+const KIM_PASSWORT = process.env.NC_KIM_PASS ?? 'Kim-Test-12345'
 const API = '/index.php/apps/calendar_planning/api'
 const KALENDER_NAME = 'Planungskalender Verein'
 const DAV = `${BASIS}/remote.php/dav/calendars/${NUTZER}/planung-test`
 
-let admin, eva, browser, seite
+let admin, kim, browser, seite
 let planungskalender, privaterKalender
 
 const basic = (nutzer, passwort) => 'Basic ' + Buffer.from(`${nutzer}:${passwort}`).toString('base64')
@@ -23,7 +23,7 @@ const basic = (nutzer, passwort) => 'Basic ' + Buffer.from(`${nutzer}:${passwort
 /** Legt die Testdaten über tools/testdaten.sh an; unter Windows läuft das Skript über die Git Bash. */
 function testdatenAnlegen() {
 	const [befehl, argumente] = process.platform === 'win32' ? ['bash', ['tools/testdaten.sh']] : ['tools/testdaten.sh', []]
-	execFileSync(befehl, argumente, { env: { ...process.env, NC_URL: BASIS, NC_USER: NUTZER, NC_PASS: PASSWORT, NC_EVA_PASS: EVA_PASSWORT }, stdio: 'inherit' })
+	execFileSync(befehl, argumente, { env: { ...process.env, NC_URL: BASIS, NC_USER: NUTZER, NC_PASS: PASSWORT, NC_KIM_PASS: KIM_PASSWORT }, stdio: 'inherit' })
 }
 
 /** API-Kontext mit Basic-Auth (wie ein Programm mit App-Passwort), nicht als Browser-Sitzung. */
@@ -63,7 +63,7 @@ async function rohesIcs(uri = 'workshop-1.ics') {
 before(async () => {
 	testdatenAnlegen()
 	admin = await kontext(NUTZER, PASSWORT)
-	eva = await kontext('eva', EVA_PASSWORT)
+	kim = await kontext('kim', KIM_PASSWORT)
 	const kalender = (await json(await admin.get(`${API}/kalender`))).kalender
 	planungskalender = kalender.find((k) => k.name === KALENDER_NAME)
 	privaterKalender = kalender.find((k) => k.name !== KALENDER_NAME)
@@ -81,7 +81,7 @@ before(async () => {
 
 after(async () => {
 	await admin?.dispose()
-	await eva?.dispose()
+	await kim?.dispose()
 	await browser?.close()
 })
 
@@ -99,12 +99,12 @@ test('2 Browser-Sitzung ohne requesttoken: CSRF-Prüfung schlägt an (412)', asy
 	assert.equal(antwort.status(), 412)
 })
 
-test('3 Fremder Kalender: eva bekommt für den nicht geteilten Kalender 404', async () => {
-	const liste = (await json(await eva.get(`${API}/kalender`))).kalender
-	assert.ok(!liste.some((k) => k.id === privaterKalender.id), 'der private Kalender steht nicht in evas Liste')
-	assert.equal((await eva.get(`${API}/termine`, { params: { kalender: privaterKalender.id } })).status(), 404)
-	assert.equal((await termin(eva, privaterKalender.id, 'workshop-1.ics')).status, 404)
-	assert.equal((await eva.put(`${API}/kalender/auswahl`, { data: { kalender: privaterKalender.id } })).status(), 404)
+test('3 Fremder Kalender: kim bekommt für den nicht geteilten Kalender 404', async () => {
+	const liste = (await json(await kim.get(`${API}/kalender`))).kalender
+	assert.ok(!liste.some((k) => k.id === privaterKalender.id), 'der private Kalender steht nicht in kims Liste')
+	assert.equal((await kim.get(`${API}/termine`, { params: { kalender: privaterKalender.id } })).status(), 404)
+	assert.equal((await termin(kim, privaterKalender.id, 'workshop-1.ics')).status, 404)
+	assert.equal((await kim.put(`${API}/kalender/auswahl`, { data: { kalender: privaterKalender.id } })).status(), 404)
 })
 
 test('4 Private und vertrauliche Termine sind für die Freigabe unsichtbar, auch bei direktem Zugriff', async () => {
@@ -116,10 +116,10 @@ test('4 Private und vertrauliche Termine sind für die Freigabe unsichtbar, auch
 		const parameter = { kalender: planungskalender.id, von: '2029-12-01', bis: '2030-02-01', pro_seite: 100 }
 		const adminListe = await json(await admin.get(`${API}/termine`, { params: parameter }))
 		assert.ok(adminListe.termine.some((t) => t.titel === 'Vertraulicher Termin'), 'der Eigentümer sieht den Termin')
-		const evaListe = await json(await eva.get(`${API}/termine`, { params: parameter }))
-		assert.ok(!evaListe.termine.some((t) => t.titel === 'Vertraulicher Termin'))
-		assert.equal((await termin(eva, planungskalender.id, 'vertraulich-1.ics')).status, 404)
-		assert.equal((await termin(eva, planungskalender.id, 'privat-1.ics')).status, 404)
+		const kimListe = await json(await kim.get(`${API}/termine`, { params: parameter }))
+		assert.ok(!kimListe.termine.some((t) => t.titel === 'Vertraulicher Termin'))
+		assert.equal((await termin(kim, planungskalender.id, 'vertraulich-1.ics')).status, 404)
+		assert.equal((await termin(kim, planungskalender.id, 'privat-1.ics')).status, 404)
 		assert.equal((await termin(admin, planungskalender.id, 'privat-1.ics')).status, 200)
 	} finally {
 		await fetch(`${DAV}/vertraulich-1.ics`, { method: 'DELETE', headers: { Authorization: basic(NUTZER, PASSWORT) } })
@@ -127,10 +127,10 @@ test('4 Private und vertrauliche Termine sind für die Freigabe unsichtbar, auch
 })
 
 test('5 Nur-Lese-Freigabe: Speichern antwortet 403, der Termin bleibt unverändert', async () => {
-	const vorher = await termin(eva, planungskalender.id, 'workshop-1.ics')
+	const vorher = await termin(kim, planungskalender.id, 'workshop-1.ics')
 	assert.equal(vorher.status, 200)
 	assert.equal(vorher.daten.schreibbar, false)
-	const antwort = await speichern(eva, planungskalender.id, { titel: 'von eva geändert' }, vorher.daten.etag)
+	const antwort = await speichern(kim, planungskalender.id, { titel: 'von kim geändert' }, vorher.daten.etag)
 	assert.equal(antwort.status, 403)
 	assert.equal((await termin(admin, planungskalender.id, 'workshop-1.ics')).daten.titel, 'Lötworkshop Grundschule')
 })
@@ -233,7 +233,7 @@ test('12 Antwort-Header der App-Seite: CSP mit Nonce, nosniff, no-referrer, kein
 })
 
 test('13 Einstellungen: lesbar für jedes Konto, nur Standardort und Feldschema werden verraten', async () => {
-	const antwort = await eva.get(`${API}/einstellungen`)
+	const antwort = await kim.get(`${API}/einstellungen`)
 	assert.equal(antwort.status(), 200)
 	const daten = await json(antwort)
 	assert.deepEqual(Object.keys(daten).sort(), ['ort_vorgabe', 'schema'])
@@ -241,10 +241,10 @@ test('13 Einstellungen: lesbar für jedes Konto, nur Standardort und Feldschema 
 	assert.equal(daten.schema.abschnitte.length, 5)
 })
 
-test('14 Schema-Routen: nur Admins; eva bekommt 403, Besucher 401', async () => {
+test('14 Schema-Routen: nur Admins; kim bekommt 403, Besucher 401', async () => {
 	for (const [methode, pfad] of [['get', '/schema'], ['put', '/schema'], ['get', '/admin/einstellungen'], ['put', '/admin/einstellungen']]) {
-		const antwort = await eva[methode](API + pfad, methode === 'put' ? { data: {} } : undefined)
-		assert.equal(antwort.status(), 403, `eva ${methode.toUpperCase()} ${pfad}`)
+		const antwort = await kim[methode](API + pfad, methode === 'put' ? { data: {} } : undefined)
+		assert.equal(antwort.status(), 403, `kim ${methode.toUpperCase()} ${pfad}`)
 	}
 	const ohne = await request.newContext({ baseURL: BASIS, extraHTTPHeaders: { Accept: 'application/json', 'OCS-APIRequest': 'true' } })
 	assert.equal((await ohne.get(`${API}/schema`)).status(), 401)
@@ -382,10 +382,10 @@ test('19 Zu großes Feldschema: 400 mit verständlicher Meldung, das gespeichert
 })
 
 test('20 Unsichtbare und Richtungszeichen landen nicht im Termin', async () => {
-	const antwort = await speichern(admin, planungskalender.id, { titel: 'Lötworkshop‮ Grund​schule⁦', zustaendig: '‏Eva﻿' })
+	const antwort = await speichern(admin, planungskalender.id, { titel: 'Lötworkshop‮ Grund​schule⁦', zustaendig: '‏Kim﻿' })
 	assert.equal(antwort.status, 200)
 	assert.equal(antwort.daten.titel, 'Lötworkshop Grundschule')
-	assert.equal(antwort.daten.zustaendig, 'Eva')
+	assert.equal(antwort.daten.zustaendig, 'Kim')
 	assert.doesNotMatch(await rohesIcs(), /[​‎‏‪-‮⁦-⁩﻿]/)
 	await speichern(admin, planungskalender.id, {})
 })
@@ -474,15 +474,15 @@ echo (string)$q->executeQuery()->fetchOne();`
 	assert.equal((await admin.put(`${API}/kalender/auswahl`, { data: { kalender: Number(id) } })).status(), 404)
 })
 
-test('25 Link in der Beschreibung führt auch die Freigabe (eva) zum richtigen Termin, nur zum Lesen', async () => {
+test('25 Link in der Beschreibung führt auch die Freigabe (kim) zum richtigen Termin, nur zum Lesen', async () => {
 	// U-KAL-21: Die Adresse enthält die Kalender-ID, die bei geteilten Kalendern für alle Konten gleich ist.
 	assert.equal((await speichern(admin, planungskalender.id, {})).status, 200)
 	const zeile = (await rohesIcs()).replace(/\r\n[ \t]/g, '').match(/Planung öffnen: (\S+)/)?.[1]
 	assert.ok(zeile, 'Link fehlt in der Beschreibung')
 	const link = new URL(zeile.replace(/\\[,;]/g, (z) => z[1]))
-	const evasKalender = (await json(await eva.get(`${API}/kalender`))).kalender
-	assert.ok(evasKalender.some((k) => String(k.id) === link.searchParams.get('kalender')), 'Kalender aus dem Link fehlt in Evas Auswahl')
-	const { status, daten } = await termin(eva, link.searchParams.get('kalender'), link.searchParams.get('termin'))
+	const kimsKalender = (await json(await kim.get(`${API}/kalender`))).kalender
+	assert.ok(kimsKalender.some((k) => String(k.id) === link.searchParams.get('kalender')), 'Kalender aus dem Link fehlt in Kims Auswahl')
+	const { status, daten } = await termin(kim, link.searchParams.get('kalender'), link.searchParams.get('termin'))
 	assert.equal(status, 200)
 	assert.equal(daten.titel, 'Lötworkshop Grundschule')
 	assert.equal(daten.schreibbar, false)

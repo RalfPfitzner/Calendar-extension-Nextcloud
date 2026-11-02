@@ -21,7 +21,7 @@ use Psr\Log\AbstractLogger;
 
 /** Liste (Laden, Zeitraum, Suche, Sortierung), Kalenderauswahl und Sperre beim Speichern, mit Attrappen von Backend und Sperrdienst. */
 class KalenderServiceTest extends TestCase {
-	private const GEHEIM = 'Geheim eva.muster@example.org';
+	private const GEHEIM = 'Geheim kim.muster@example.org';
 
 	/** @var list<array{0:mixed,1:string}> */
 	public array $protokoll = [];
@@ -294,7 +294,7 @@ class KalenderServiceTest extends TestCase {
 		// nicht in „gesamt“ und sind auch über die Suche nach ihrem Titel nicht zu finden.
 		$objekte = [
 			'offen.ics' => self::ics('offen', 'Sommerfest'),
-			'privat.ics' => self::ics('privat', 'Arzttermin Eva'),
+			'privat.ics' => self::ics('privat', 'Arzttermin Kim'),
 			'vertraulich.ics' => self::ics('vertraulich', 'Vorstandssitzung intern'),
 		];
 		$klassen = ['privat.ics' => 1, 'vertraulich.ics' => 2];
@@ -302,11 +302,11 @@ class KalenderServiceTest extends TestCase {
 
 		$service = $this->service([$this->kalenderAttrappe('3', 'planung_shared_by_admin', 'Planung', true)]);
 		$this->objekte($objekte, $klassen);
-		$liste = $service->termine('eva', 3, $von, $bis, '', 1, 25);
+		$liste = $service->termine('kim', 3, $von, $bis, '', 1, 25);
 		$this->assertSame(['offen.ics'], self::uris($liste));
 		$this->assertSame(1, $liste['gesamt']);
 		foreach (['Arzttermin', 'Vorstandssitzung'] as $suche) {
-			$liste = $service->termine('eva', 3, $von, $bis, $suche, 1, 25);
+			$liste = $service->termine('kim', 3, $von, $bis, $suche, 1, 25);
 			$this->assertSame([], $liste['termine'], $suche);
 			$this->assertSame(0, $liste['gesamt'], $suche);
 		}
