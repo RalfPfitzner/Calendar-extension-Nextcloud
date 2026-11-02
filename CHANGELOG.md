@@ -2,6 +2,20 @@
 
 ## [Unveröffentlicht]
 
+## [1.0.1] - 2026-11-01
+
+### Behoben
+- **Einstellungsseite in einem eigenen Bereich „Verwaltung → Kalender-Planung“** statt unter „Zusätzliche
+  Einstellungen“ (`lib/Settings/AdminSection.php`). Dort teilt sich die App die Seite mit anderen Apps; Impersonate
+  5.0.0 (Nextcloud 34) und 6.0.0 (35) liefern `<div id="impersonate"</div>` ohne schließende Klammer, dadurch
+  verschwinden alle folgenden Formulare, auch dieses. Gefunden bei der ersten Installation (Nextcloud 34.0.5 mit
+  Impersonate 5.0.0); der Fix in Impersonate (nextcloud/impersonate#703) ist noch in keinem Release. Die Test-Nextcloud
+  installiert diese Impersonate-Versionen jetzt mit, die Browser-Tests prüfen die Seite unter der neuen Adresse
+  `/settings/admin/calendar_planning`.
+
+### Hinweise zum Update
+- Altes Verzeichnis `calendar_planning` ersetzen, dann `occ upgrade`. Einstellungen und Daten bleiben.
+
 ### Geändert
 - `follow-redirects` 1.16.1 → 1.16.2 (über `@nextcloud/axios` → `axios`) wegen GHSA-mrwp-f3q8-3g9p
   (CVE-2026-116689, „high“). Die Lücke steckt im Node-HTTP-Weg; das gebaute Bundle enthält `follow-redirects` nicht,

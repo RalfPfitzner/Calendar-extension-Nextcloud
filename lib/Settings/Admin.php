@@ -9,7 +9,7 @@ use OCP\AppFramework\Http\TemplateResponse;
 use OCP\Settings\ISettings;
 use OCP\Util;
 
-/** Admin-Einstellungen unter „Verwaltung → Zusätzliche Einstellungen“; die Oberfläche ist src/admin.js. */
+/** Admin-Einstellungen im eigenen Bereich „Verwaltung → Kalender-Planung“ (AdminSection); die Oberfläche ist src/admin.js. */
 class Admin implements ISettings {
 	public function getForm(): TemplateResponse {
 		Util::addScript(Application::APP_ID, Application::APP_ID . '-admin');
@@ -18,7 +18,7 @@ class Admin implements ISettings {
 	}
 
 	public function getSection(): string {
-		return 'additional';
+		return Application::APP_ID;
 	}
 
 	public function getPriority(): int {

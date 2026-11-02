@@ -12,6 +12,11 @@ NC_VERSION=${NC_VERSION:-35.0.2}
 NC_IMAGE=nextcloud:$NC_VERSION-apache
 KALENDER_VERSION=${KALENDER_VERSION:-6.6.4}
 KALENDER_APP=https://github.com/nextcloud-releases/calendar/releases/download/v$KALENDER_VERSION/calendar-v$KALENDER_VERSION.tar.gz
+# Impersonate mit kaputtem Admin-Template (`<div id="impersonate"</div>`, in 5.0.0 für 34 und 6.0.0 für 35): Regression
+# dafür, dass die Einstellungsseite in einem eigenen Bereich steht und nicht von fremden Formularen verschluckt wird.
+[[ $NC_VERSION == 34.* ]] && IMPERSONATE_VORGABE=5.0.0 || IMPERSONATE_VORGABE=6.0.0
+IMPERSONATE_VERSION=${IMPERSONATE_VERSION:-$IMPERSONATE_VORGABE}
+IMPERSONATE_APP=https://github.com/nextcloud-releases/impersonate/releases/download/v$IMPERSONATE_VERSION/impersonate-v$IMPERSONATE_VERSION.tar.gz
 ADMIN_PASS=Admin-Test-123
 EVA_PASS=Eva-Test-12345
 APP=$(cd "$(dirname "$0")/.." && pwd)
@@ -23,11 +28,16 @@ fi
 
 [[ -f $APP/js/calendar_planning-main.mjs ]] || { echo "Erst die Oberfläche bauen: npm ci && npm run build" >&2; exit 1; }
 
+# Unter Git Bash auf Windows: Hostpfade als Windows-Pfad (cygpath), Containerpfade nicht umschreiben lassen
+# (MSYS_NO_PATHCONV, sonst wird /var/… zu C:/Program Files/Git/var/…). Nur für docker, curl braucht /dev/null.
+hostpfad() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
+docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
+
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" -p "$PORT:80" \
 	-e SQLITE_DATABASE=nc -e NEXTCLOUD_ADMIN_USER=admin -e NEXTCLOUD_ADMIN_PASSWORD="$ADMIN_PASS" \
 	-e NEXTCLOUD_TRUSTED_DOMAINS="localhost 127.0.0.1" \
-	-v "$APP:/var/www/html/custom_apps/calendar_planning:ro" "$NC_IMAGE" >/dev/null
+	-v "$(hostpfad "$APP"):/var/www/html/custom_apps/calendar_planning:ro" "$NC_IMAGE" >/dev/null
 
 occ() { docker exec -u www-data "$NAME" php occ "$@"; }
 echo "Warte auf die Installation …"
@@ -37,16 +47,21 @@ for _ in $(seq 1 60); do
 done
 occ status | grep -q 'installed: true' || { docker logs "$NAME" | tail -30; exit 1; }
 
-# Kalender-App aus dem GitHub-Release (der App-Store ist nicht überall erreichbar)
-tmp=$(mktemp -d)
-curl -fsSL "$KALENDER_APP" | tar xz -C "$tmp"
-# Unter Git Bash auf Windows braucht docker cp den Windows-Pfad (cygpath), sonst den POSIX-Pfad.
-docker cp "$(cygpath -w "$tmp" 2>/dev/null || echo "$tmp")/calendar" "$NAME:/var/www/html/custom_apps/"
-rm -rf "$tmp"
-docker exec "$NAME" chown -R www-data:www-data /var/www/html/custom_apps/calendar
+# Kalender-App und Impersonate aus dem GitHub-Release (der App-Store ist nicht überall erreichbar)
+fremdeApp() {
+	local tmp
+	tmp=$(mktemp -d)
+	curl -fsSL "$2" | tar xz -C "$tmp"
+	docker cp "$(hostpfad "$tmp")/$1" "$NAME:/var/www/html/custom_apps/"
+	rm -rf "$tmp"
+	docker exec "$NAME" chown -R www-data:www-data "/var/www/html/custom_apps/$1"
+}
+fremdeApp calendar "$KALENDER_APP"
+fremdeApp impersonate "$IMPERSONATE_APP"
 
 occ app:disable firstrunwizard >/dev/null
 occ app:enable calendar
+occ app:enable impersonate
 occ app:enable calendar_planning
 # Einstellungen, wie ein Admin sie setzen würde; die Browser-Tests rechnen mit genau diesen Werten.
 occ config:app:set calendar_planning ort_vorgabe --value 'Vereinsheim' >/dev/null
