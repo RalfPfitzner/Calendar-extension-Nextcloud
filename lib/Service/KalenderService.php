@@ -43,6 +43,17 @@ class KalenderService {
 	/** Meldung, wenn eine andere Anfrage den Termin gerade speichert (Sperre belegt): kurz warten genügt. */
 	public const GERADE_GESPEICHERT = 'Der Termin wird gerade gespeichert. Bitte gleich noch einmal versuchen.';
 
+	/**
+	 * Systemkalender, in denen niemand Veranstaltungen plant (U-KAL-21): Geburtstage aus den Kontakten
+	 * (`contact_birthdays`, nur lesbar, Termine erzeugt Nextcloud) und Kalender, die andere Apps anlegen und selbst
+	 * pflegen (`app-generated--…`). Abos und Kalender anderer Apps ohne CalDAV-Objekte fallen schon über die Klasse
+	 * heraus (alleKalender).
+	 */
+	private const SYSTEMKALENDER = '/^(contact_birthdays|app-generated--)/';
+
+	/** Kalender je Konto, je Anfrage einmal aufgebaut (P-KAL-04). @var array<string,list<ICalendar>> */
+	private array $kalenderJeKonto = [];
+
 	public function __construct(
 		private IManager $kalenderManager,
 		private CalDavBackend $backend,
@@ -87,32 +98,28 @@ class KalenderService {
 	/**
 	 * Termine eines Kalenders im Zeitraum, seitenweise.
 	 *
+	 * Jedes Kalenderobjekt wird genau einmal geladen und geparst (P-KAL-02): Das Backend sucht nur per SQL vor
+	 * (Termine, die nach $von enden), Zeitraum, Sichtbarkeit, Suche und Serien prüft Planung::lesen auf derselben
+	 * geparsten Fassung; erst danach wird sortiert, gezählt und die Seite ausgeschnitten.
+	 *
+	 * @param DateTimeImmutable|null $jetzt Bezug für „nächster Termin“ einer Serie (U-KAL-16), ohne Angabe die Uhrzeit
 	 * @return array{termine:list<array<string,mixed>>,seite:int,seiten:int,pro_seite:int,gesamt:int,schreibbar:bool}
 	 */
 	public function termine(string $uid, int $kalenderId, DateTimeImmutable $von, DateTimeImmutable $bis,
-		string $suche, int $seite, int $proSeite): array {
+		string $suche, int $seite, int $proSeite, ?DateTimeImmutable $jetzt = null): array {
 		$kalender = $this->kalenderFuer($uid, $kalenderId);
-		$filter = [
-			'name' => 'VCALENDAR',
-			'is-not-defined' => false,
-			'time-range' => false,
-			'prop-filters' => [],
-			'comp-filters' => [[
-				'name' => 'VEVENT',
-				'is-not-defined' => false,
-				'time-range' => ['start' => $von, 'end' => $bis],
-				'prop-filters' => [],
-				'comp-filters' => [],
-			]],
-		];
-		$uris = $this->backend->calendarQuery($kalenderId, $filter);
-		$objekte = $this->backend->getMultipleCalendarObjects($kalenderId, $uris);
-
-		$suche = mb_strtolower(trim($suche));
+		$jetzt ??= new DateTimeImmutable('now', new DateTimeZone(self::ZONE));
+		$suche = self::suchform(trim($suche));
 		$termine = [];
-		foreach ($objekte as $objekt) {
+		foreach ($this->objekteAb($kalenderId, $von) as $uri) {
+			// Das Objekt liegt nach calendarQuery im Zwischenspeicher des Backends (CalDavBackend::$cachedObjects),
+			// getCalendarObject fragt die Datenbank also nicht noch einmal.
+			$objekt = $this->backend->getCalendarObject($kalenderId, $uri);
+			if ($objekt === null) {
+				continue;
+			}
 			try {
-				$eintrag = $this->eintrag($kalender, $kalenderId, $objekt, $von, $bis, $suche);
+				$eintrag = $this->eintrag($kalender, $kalenderId, $objekt, $von, $bis, $suche, $jetzt);
 			} catch (\Throwable $e) {
 				// Ein defekter Termin (z. B. ungültiges iCalendar aus einem anderen Programm) darf die Liste nicht
 				// scheitern lassen: überspringen, im Protokoll nur Klasse, Code und Hash des Termins.
@@ -124,13 +131,16 @@ class KalenderService {
 				$termine[] = $eintrag;
 			}
 		}
-		usort($termine, fn ($a, $b) => [$a['beginn'] ?? '', $a['titel']] <=> [$b['beginn'] ?? '', $b['titel']]);
+		// Nach Zeitpunkt als Zahl (Q-KAL-04): Die Zeitstempel tragen verschiedene UTC-Versätze (Sommer-, Winterzeit,
+		// UTC bei Ganztags-Terminen), als Text sortiert stimmt die Reihenfolge dann nicht. Bei gleicher Zeit nach Titel,
+		// dann nach URI, damit die Seiten stabil bleiben.
+		usort($termine, fn ($a, $b) => [$a[0], $a[1], $a[2]['objekt']] <=> [$b[0], $b[1], $b[2]['objekt']]);
 
 		$gesamt = count($termine);
 		$seiten = max(1, (int)ceil($gesamt / $proSeite));
 		$seite = min(max(1, $seite), $seiten);
 		return [
-			'termine' => array_slice($termine, ($seite - 1) * $proSeite, $proSeite),
+			'termine' => array_column(array_slice($termine, ($seite - 1) * $proSeite, $proSeite), 2),
 			'seite' => $seite,
 			'seiten' => $seiten,
 			'pro_seite' => $proSeite,
@@ -140,23 +150,111 @@ class KalenderService {
 	}
 
 	/**
-	 * Listeneintrag zu einem Kalenderobjekt, null wenn unsichtbar, kein Termin oder nicht zur Suche passend.
+	 * URIs der Termine, die nach $von enden. Nur die Bedingung auf das Ende geht an calendarQuery: Mit Anfang und Ende
+	 * zugleich parst das Backend jedes Objekt und löst Serien auf, um den Zeitraum genau zu prüfen
+	 * (`requirePostFilter`), danach parst Planung::lesen dasselbe Objekt noch einmal. So prüft das Backend nur per SQL
+	 * (`lastoccurence`), den Rest Planung::lesen.
+	 *
+	 * @return list<string>
+	 */
+	private function objekteAb(int $kalenderId, DateTimeImmutable $von): array {
+		return $this->backend->calendarQuery($kalenderId, [
+			'name' => 'VCALENDAR',
+			'is-not-defined' => false,
+			'time-range' => false,
+			'prop-filters' => [],
+			'comp-filters' => [[
+				'name' => 'VEVENT',
+				'is-not-defined' => false,
+				'time-range' => ['start' => $von, 'end' => null],
+				'prop-filters' => [],
+				'comp-filters' => [],
+			]],
+		]);
+	}
+
+	/**
+	 * Listeneintrag zu einem Kalenderobjekt als [Zeitpunkt für die Sortierung, Titel für die Sortierung, Eintrag],
+	 * null wenn unsichtbar, kein Termin, nicht im Zeitraum oder nicht zur Suche passend.
 	 *
 	 * @param array<string,mixed> $objekt
-	 * @return array<string,mixed>|null
+	 * @return array{0:int,1:string,2:array<string,mixed>}|null
 	 */
-	private function eintrag(ICalendar $kalender, int $kalenderId, array $objekt, DateTimeImmutable $von, DateTimeImmutable $bis, string $suche): ?array {
+	private function eintrag(ICalendar $kalender, int $kalenderId, array $objekt, DateTimeImmutable $von, DateTimeImmutable $bis,
+		string $suche, DateTimeImmutable $jetzt): ?array {
 		if (!$this->sichtbar($kalender, $objekt)) {
 			return null;
 		}
-		$daten = $this->planung->lesen($objekt['calendardata'], $von, $bis, new DateTimeZone(self::ZONE));
+		$daten = $this->planung->lesen($objekt['calendardata'], $von, $bis, new DateTimeZone(self::ZONE), $jetzt);
 		if ($daten === null) {
 			return null;
 		}
-		if ($suche !== '' && !str_contains(mb_strtolower(implode("\n", array_filter($daten, 'is_string'))), $suche)) {
+		if ($suche !== '' && !str_contains($this->suchtext($daten), $suche)) {
 			return null;
 		}
-		return $this->kurz($kalenderId, $objekt['uri'], $daten);
+		return [self::zeitpunkt($daten), self::suchform($daten['titel']), $this->kurz($kalenderId, $objekt['uri'], $daten)];
+	}
+
+	/**
+	 * Text, in dem die Suche sucht (Q-KAL-06, U-KAL-11): nur, was die Oberfläche zeigt, also Titel, Ort, die
+	 * Planungsfelder aus dem Schema und das Datum als TT.MM.JJJJ. Nicht die Beschreibung mit dem Link, nicht die UID
+	 * und nicht die Zeitstempel im ISO-Format.
+	 *
+	 * @param array<string,mixed> $daten
+	 */
+	private function suchtext(array $daten): string {
+		$teile = [$daten['titel'], $daten['ort']];
+		foreach (['beginn', 'ende'] as $zeit) {
+			if (is_string($daten[$zeit] ?? null)) {
+				$teile[] = self::anzeigeDatum($daten[$zeit], $daten['ganztags'] === true);
+			}
+		}
+		foreach ($this->einstellungen->schema->felder as $schluessel => $feld) {
+			$wert = $daten[$schluessel] ?? '';
+			if (!is_string($wert) || $wert === '') {
+				continue;
+			}
+			$teile[] = $wert;
+			if ($feld['typ'] === 'date' && ($datum = DateTimeImmutable::createFromFormat('!Y-m-d', $wert)) !== false) {
+				$teile[] = $datum->format('d.m.Y');
+			}
+		}
+		return self::suchform(implode("\n", $teile));
+	}
+
+	/**
+	 * Vergleichsform für die Suche: Unicode-NFC (zusammengesetzte und vorkomponierte Umlaute gleich), Groß- und
+	 * Kleinschreibung egal (Case-Folding, „ß“ wird „ss“), Umlaute als ae/oe/ue, damit „Loetkurs“ „Lötkurs“ findet.
+	 */
+	public static function suchform(string $text): string {
+		if (class_exists(\Normalizer::class)) {
+			$text = \Normalizer::normalize($text, \Normalizer::FORM_C) ?: $text;
+		}
+		return strtr(mb_convert_case($text, MB_CASE_FOLD, 'UTF-8'), ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue']);
+	}
+
+	/** Datum, wie die Liste es zeigt (src/datum.js): in der Zone der Oberfläche, ganztägige Termine als UTC-Datum. */
+	private static function anzeigeDatum(string $zeit, bool $ganztags): string {
+		$wert = new DateTimeImmutable($zeit);
+		return $wert->setTimezone(new DateTimeZone($ganztags ? 'UTC' : self::ZONE))->format('d.m.Y');
+	}
+
+	/**
+	 * Zeitpunkt für die Sortierung als Unix-Zeit (Q-KAL-04). Ganztägige Termine zählen ab Mitternacht ihres Tages in
+	 * der Zone der Oberfläche, nicht ab UTC-Mitternacht, damit sie vor den Terminen mit Uhrzeit am selben Tag stehen.
+	 *
+	 * @param array<string,mixed> $daten
+	 */
+	private static function zeitpunkt(array $daten): int {
+		if (!is_string($daten['beginn'] ?? null)) {
+			return PHP_INT_MIN;
+		}
+		$beginn = new DateTimeImmutable($daten['beginn']);
+		if ($daten['ganztags'] === true) {
+			$tag = $beginn->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d');
+			return (new DateTimeImmutable($tag, new DateTimeZone(self::ZONE)))->getTimestamp();
+		}
+		return $beginn->getTimestamp();
 	}
 
 	/** @return array<string,mixed> */
@@ -265,17 +363,29 @@ class KalenderService {
 			. '?kalender=' . $kalenderId . '&termin=' . rawurlencode($objektUri);
 	}
 
-	/** @return list<ICalendar> */
+	/**
+	 * Kalender des Kontos, in denen geplant werden kann; je Anfrage einmal aufgebaut (P-KAL-04), Speichern fragt sonst
+	 * zweimal (Rechte, danach das Lesen des gespeicherten Termins).
+	 *
+	 * @return list<ICalendar>
+	 */
 	private function alleKalender(string $uid): array {
+		if (isset($this->kalenderJeKonto[$uid])) {
+			return $this->kalenderJeKonto[$uid];
+		}
 		$kalender = [];
 		foreach ($this->kalenderManager->getCalendarsForPrincipal('principals/users/' . $uid) as $eintrag) {
 			// Nur echte CalDAV-Kalender: Abos und Kalender anderer Apps lassen sich nicht so beschreiben.
 			if (!$eintrag instanceof \OCA\DAV\CalDAV\CalendarImpl || $eintrag->isDeleted()) {
 				continue;
 			}
+			// Geteilte Kalender tragen die URI des Eigentümers mit „_shared_by_…“ dahinter; das Muster passt auch dort.
+			if (preg_match(self::SYSTEMKALENDER, $eintrag->getUri()) === 1) {
+				continue;
+			}
 			$kalender[] = $eintrag;
 		}
-		return $kalender;
+		return $this->kalenderJeKonto[$uid] = $kalender;
 	}
 
 	private function kalenderFuer(string $uid, int $kalenderId): ICalendar {

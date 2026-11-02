@@ -403,3 +403,82 @@ test('21 Zeiten ohne Zeitzone gelten als Ortszeit, nicht als UTC', async () => {
 		await davLoeschen(uri)
 	}
 })
+
+test('22 Suche nur in sichtbaren Feldern: Linktext, Adresse, UID und ISO-Datum finden nichts', async () => {
+	// Q-KAL-06, U-KAL-11. Nach dem Speichern steht der Link „Planung öffnen: …“ in der Beschreibung.
+	assert.equal((await speichern(admin, planungskalender.id, { zustaendig: 'Jörg' })).status, 200)
+	assert.match(await rohesIcs(), /Planung öffnen: /)
+	const { beginn } = (await termin(admin, planungskalender.id, 'workshop-1.ics')).daten
+	const [jahr, monat, tag] = beginn.slice(0, 10).split('-')
+	const treffer = async (suche) => {
+		const liste = await json(await admin.get(`${API}/termine`, { params: { kalender: planungskalender.id, suche } }))
+		return liste.termine.filter((t) => t.objekt === 'workshop-1.ics').length
+	}
+	for (const suche of ['LÖTWORKSHOP', 'loetworkshop', 'joerg', 'vereinsheim', `${tag}.${monat}.${jahr}`]) {
+		assert.equal(await treffer(suche), 1, `„${suche}“ sollte den Termin finden`)
+	}
+	for (const suche of ['Planung öffnen', 'calendar_planning', 'localhost', 'workshop-1', `${jahr}-${monat}-${tag}`, 'Erste Zeile der Beschreibung']) {
+		assert.equal(await treffer(suche), 0, `„${suche}“ darf den Termin nicht finden`)
+	}
+	await speichern(admin, planungskalender.id, {})
+})
+
+test('23 Sortierung nach Zeitpunkt, nicht nach dem Text mit verschiedenen UTC-Versätzen', async () => {
+	// Q-KAL-04: 13:30 UTC liegt nach 14:00 Berliner Zeit (13:00 UTC), als Text „T13:30+00:00“ < „T14:00+01:00“.
+	const termine = {
+		'sort-utc.ics': einTermin('sort-utc', 'DTSTART:20310106T133000Z\r\nDTEND:20310106T140000Z\r\nSUMMARY:Sortierung UTC\r\n'),
+		'sort-berlin.ics': einTermin('sort-berlin', 'DTSTART;TZID=Europe/Berlin:20310106T140000\r\nDTEND;TZID=Europe/Berlin:20310106T150000\r\nSUMMARY:Sortierung Berlin\r\n'),
+		'sort-ny.ics': einTermin('sort-ny', 'DTSTART;TZID=America/New_York:20310106T075000\r\nDTEND;TZID=America/New_York:20310106T085000\r\nSUMMARY:Sortierung New York\r\n'),
+		'sort-ganztags.ics': einTermin('sort-ganztags', 'DTSTART;VALUE=DATE:20310106\r\nDTEND;VALUE=DATE:20310107\r\nSUMMARY:Sortierung ganztags\r\n'),
+	}
+	for (const [uri, ics] of Object.entries(termine)) {
+		await davAnlegen(uri, ics)
+	}
+	try {
+		const liste = await json(await admin.get(`${API}/termine`, { params: { kalender: planungskalender.id, von: '2031-01-06', bis: '2031-01-06', suche: 'Sortierung' } }))
+		assert.deepEqual(liste.termine.map((t) => t.objekt), ['sort-ganztags.ics', 'sort-ny.ics', 'sort-berlin.ics', 'sort-utc.ics'])
+	} finally {
+		for (const uri of Object.keys(termine)) {
+			await davLoeschen(uri)
+		}
+	}
+})
+
+test('24 Systemkalender wie „Contact birthdays“ stehen nicht in der Auswahl und liefern keine Liste', async () => {
+	// U-KAL-21. Den Geburtstagskalender legt Nextcloud selbst an; fehlt er noch, hier einen mit derselben URI anlegen.
+	const geburtstage = `${BASIS}/remote.php/dav/calendars/${NUTZER}/contact_birthdays/`
+	const da = await fetch(geburtstage, { method: 'PROPFIND', headers: { Authorization: basic(NUTZER, PASSWORT), Depth: '0' } })
+	if (da.status === 404) {
+		const neu = await fetch(geburtstage, { method: 'MKCALENDAR', headers: { Authorization: basic(NUTZER, PASSWORT) } })
+		assert.equal(neu.status, 201)
+	} else {
+		assert.equal(da.status, 207)
+	}
+	const kalender = (await json(await admin.get(`${API}/kalender`))).kalender
+	assert.ok(kalender.length >= 2)
+	assert.equal(kalender.some((k) => /birthday|geburtstag/i.test(k.name)), false, JSON.stringify(kalender))
+	// Die ID des Geburtstagskalenders (aus CalDAV) gilt für die App als unbekannt.
+	const props = await (await fetch(geburtstage, {
+		method: 'PROPFIND',
+		headers: { Authorization: basic(NUTZER, PASSWORT), Depth: '0', 'Content-Type': 'application/xml' },
+		body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:id/></d:prop></d:propfind>',
+	})).text()
+	const id = props.match(/<oc:id>(\d+)<\/oc:id>/)?.[1]
+	if (id) {
+		assert.equal((await admin.get(`${API}/termine`, { params: { kalender: id } })).status(), 404)
+	}
+})
+
+test('25 Link in der Beschreibung führt auch die Freigabe (eva) zum richtigen Termin, nur zum Lesen', async () => {
+	// U-KAL-21: Die Adresse enthält die Kalender-ID, die bei geteilten Kalendern für alle Konten gleich ist.
+	assert.equal((await speichern(admin, planungskalender.id, {})).status, 200)
+	const zeile = (await rohesIcs()).replace(/\r\n[ \t]/g, '').match(/Planung öffnen: (\S+)/)?.[1]
+	assert.ok(zeile, 'Link fehlt in der Beschreibung')
+	const link = new URL(zeile.replace(/\\[,;]/g, (z) => z[1]))
+	const evasKalender = (await json(await eva.get(`${API}/kalender`))).kalender
+	assert.ok(evasKalender.some((k) => String(k.id) === link.searchParams.get('kalender')), 'Kalender aus dem Link fehlt in Evas Auswahl')
+	const { status, daten } = await termin(eva, link.searchParams.get('kalender'), link.searchParams.get('termin'))
+	assert.equal(status, 200)
+	assert.equal(daten.titel, 'Lötworkshop Grundschule')
+	assert.equal(daten.schreibbar, false)
+})
