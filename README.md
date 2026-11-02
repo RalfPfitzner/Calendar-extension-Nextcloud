@@ -42,7 +42,7 @@ Voraussetzung: Admin-Rechte in der Nextcloud und ein beschreibbares `custom_apps
 
 ## Einstellungen (Admin)
 
-Unter **Verwaltung → Zusätzliche Einstellungen → Kalender-Planung** gibt es die Vorgaben und den Editor für die Felder des Planungsformulars. Alles ist optional; ohne Einstellungen läuft die App mit dem Vorgabe-Schema (16 Felder in fünf Abschnitten, siehe `schema/vorgabe.json`). Die Vorgaben lassen sich auch über `occ` setzen:
+Unter **Verwaltung → Kalender-Planung** gibt es die Vorgaben und den Editor für die Felder des Planungsformulars. Alles ist optional; ohne Einstellungen läuft die App mit dem Vorgabe-Schema (16 Felder in fünf Abschnitten, siehe `schema/vorgabe.json`). Die Vorgaben lassen sich auch über `occ` setzen:
 
 | Schlüssel | Wirkung | Beispiel |
 |---|---|---|

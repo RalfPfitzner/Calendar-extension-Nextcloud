@@ -47,7 +47,7 @@ Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist de
 
 ## 3. Einstellungen (Admin)
 
-Einstellungsseite unter „Verwaltung → Zusätzliche Einstellungen“ (`lib/Settings/Admin.php`, Oberfläche `src/Admin.vue`), Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für Admins (ohne `NoAdminRequired`). Alle Werte in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen und geschrieben von `EinstellungenSpeicher`, bereinigt in `Einstellungen` (einzeilig, ohne Steuerzeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben. Jede gespeicherte Änderung (Schema oder Vorgaben) geht als `CriticalActionPerformedEvent` an das Audit-Protokoll von Nextcloud (App `admin_audit`, falls aktiv: mit Konto und Zeit), nur mit der Zahl der Abschnitte und Felder, ohne Inhalte.
+Einstellungsseite im eigenen Bereich „Verwaltung → Kalender-Planung“ (`lib/Settings/Admin.php` mit `AdminSection.php`, Oberfläche `src/Admin.vue`), Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für Admins (ohne `NoAdminRequired`). Alle Werte in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen und geschrieben von `EinstellungenSpeicher`, bereinigt in `Einstellungen` (einzeilig, ohne Steuerzeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben. Jede gespeicherte Änderung (Schema oder Vorgaben) geht als `CriticalActionPerformedEvent` an das Audit-Protokoll von Nextcloud (App `admin_audit`, falls aktiv: mit Konto und Zeit), nur mit der Zahl der Abschnitte und Felder, ohne Inhalte.
 
 | Schlüssel | Vorgabe | Wirkung |
 |---|---|---|

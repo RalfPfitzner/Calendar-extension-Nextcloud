@@ -49,8 +49,19 @@ after(async () => {
 	await browser?.close()
 })
 
+test('Eigener Bereich in der Verwaltung, auch neben Impersonate mit kaputtem Template', async () => {
+	// Die Test-Nextcloud hat Impersonate 5.0.0/6.0.0 aktiv (tools/test-nextcloud.sh); unter „Zusätzliche Einstellungen“
+	// verschluckte dessen offenes <div> früher das Formular dieser App.
+	const apps = await (await admin.get('/ocs/v2.php/cloud/apps?filter=enabled&format=json')).json()
+	assert.ok(apps.ocs.data.apps.includes('impersonate'), 'Impersonate muss für diesen Test aktiv sein')
+	await seite.goto(BASIS + '/index.php/settings/admin/overview')
+	await seite.locator('a[href$="/settings/admin/calendar_planning"]').first().click()
+	await seite.waitForURL(/settings\/admin\/calendar_planning/)
+	await seite.locator('#calendar-planning-admin').getByRole('heading', { name: 'Kalender-Planung' }).waitFor()
+})
+
 test('Admin-Seite zeigt Vorgaben und Felder, ein neues Auswahlfeld lässt sich speichern', async () => {
-	await seite.goto(BASIS + '/index.php/settings/admin/additional')
+	await seite.goto(BASIS + '/index.php/settings/admin/calendar_planning')
 	const bereich = seite.locator('#calendar-planning-admin')
 	await bereich.getByRole('heading', { name: 'Kalender-Planung' }).waitFor()
 	assert.equal(await bereich.getByLabel('Standardort').inputValue(), 'Vereinsheim')
@@ -107,7 +118,7 @@ test('Formular und Liste folgen dem geänderten Schema', async () => {
 })
 
 test('Vorlage „Makerspace“ laden: das Formular zeigt die alten Bezeichnungen', async () => {
-	await seite.goto(BASIS + '/index.php/settings/admin/additional')
+	await seite.goto(BASIS + '/index.php/settings/admin/calendar_planning')
 	const bereich = seite.locator('#calendar-planning-admin')
 	await bereich.getByRole('heading', { name: 'Kalender-Planung' }).waitFor()
 	seite.once('dialog', (dialog) => dialog.accept())
