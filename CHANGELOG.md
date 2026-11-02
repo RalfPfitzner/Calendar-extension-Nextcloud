@@ -2,6 +2,31 @@
 
 ## [Unveröffentlicht]
 
+Review-Befunde vom 29.10.2026, Teil 1 (Plan `docs/superpowers/plans/2026-11-02-review-alle.md`, PR 1).
+
+### Hinweise zum Update
+- Keine Änderung am Datenformat (`X-CALPLAN-…`), keine neuen Einstellungen.
+- Ein Feldschema über 64 KiB lässt sich nicht mehr speichern (vorher wurde es angenommen und beim nächsten Laden still durch die Vorgabe ersetzt).
+
+### Behoben
+- **Feld-Editor:** Das Umbenennen eines bestehenden Feldes ändert nicht mehr still dessen Schlüssel; gespeicherte Werte bleiben am Feld. Fallen gespeicherte Felder weg, fragt die Seite vor dem Speichern nach und nennt sie danach (Q-KAL-01).
+- **Feld-Editor:** Optionen eines Auswahlfeldes lassen sich wieder Zeile für Zeile tippen, mit Enter und Leerzeichen (Q-KAL-02).
+- **Beschreibung:** Beim Speichern bleiben Zeilen stehen, die zufällig mit dem Linktext beginnen; ersetzt wird nur der eigene Link der App (Q-KAL-03).
+- **Zeiten ohne Zeitzone** („Floating“) werden mit ihrer Ortszeit angezeigt statt 1–2 Stunden verschoben (Q-KAL-05).
+- **Gleichzeitiges Speichern** desselben Termins: genau eine Speicherung gewinnt, die andere bekommt den Konflikt-Hinweis (S-KAL-03, Q-KAL-10).
+
+### Sicherheit
+- Unerwartete Fehler stehen ohne Termininhalt und Kontaktdaten im Nextcloud-Protokoll (S-KAL-01).
+- Unsichtbare und Richtungszeichen werden aus Titel, Feldern und Einstellungen entfernt (S-KAL-06).
+- Ein zu großes Feldschema wird beim Speichern mit einer Meldung abgelehnt (S-KAL-02).
+- **Release:** Das Paket wird ohne Schreib- und OIDC-Rechte gebaut; erst ein eigener Job prüft die Prüfsumme, attestiert es und hängt es an den Release-Entwurf. Ein veröffentlichtes Release wird nicht mehr überschrieben (S-KAL-04).
+- **Lieferkette:** actionlint und die Nextcloud-Test-Images per Digest, Kalender-App, Impersonate und die Server-Dateien für den API-Check per SHA-256; gitleaks in der CI; `npm audit` blockiert ab „moderate“ (`minimatch` für `webdav` per `overrides` angehoben) (S-KAL-05).
+- `SECURITY.md`: unterstützte Versionen, App-ID `calendar_planning`, Meldeweg und Prüfung der Pakete (S-KAL-07).
+
+### Geändert
+- **Einstellungsseite:** Hinweis auf ungespeicherte Änderungen, Rückfrage beim Verlassen; bei schmalem Fenster Karten statt Tabelle, kein seitliches Scrollen von 1280 bis 600 Pixel; verständliche Fehlermeldungen (Abschnitt und Feld ab 1 gezählt, mit Bezeichnung); Feld entfernen mit „Rückgängig“, Fokus bleibt beim Verschieben am Feld (U-KAL-10, U-KAL-18, U-KAL-19, U-KAL-20).
+- **CI schneller:** Playwright-Chromium und Composer aus dem Cache; die Test-Nextcloud nimmt Containername und Port aus `NC_NAME`/`NC_PORT` und entfernt ihr Volume mit.
+
 ## [1.0.1] - 2026-11-01
 
 ### Behoben
