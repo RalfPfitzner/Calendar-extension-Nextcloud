@@ -46,16 +46,24 @@ class AdminController extends Controller {
 		]);
 	}
 
-	/** @param array<string,mixed> $schema */
+	/**
+	 * Speichert das Schema. `entfernt` nennt die Felder des bisherigen Schemas, deren Schlüssel nun fehlt (Q-KAL-01):
+	 * Ihre erfassten Werte bleiben im Termin, das Formular zeigt sie aber nicht mehr. Ablehnen lässt sich das nicht
+	 * sinnvoll (Felder dürfen wegfallen), und ob es Werte gibt, wüsste nur ein Durchgang durch alle Kalender aller
+	 * Konten; die Oberfläche fragt deshalb vor dem Speichern nach, der Server meldet zurück.
+	 *
+	 * @param array<string,mixed> $schema
+	 */
 	#[UserRateLimit(limit: 30, period: 60)]
 	public function schemaSpeichern(array $schema): JSONResponse {
 		return $this->ausfuehren(function () use ($schema) {
+			$alt = $this->einstellungen->schema;
 			$neu = $this->speicher->schemaSpeichern($schema);
 			$this->protokollieren('Kalender-Planung: Feldschema geändert (%s Abschnitte, %s Felder)', [
 				'abschnitte' => count($neu->abschnitte),
 				'felder' => count($neu->felder),
 			]);
-			return ['schema' => $neu->alsArray()];
+			return ['schema' => $neu->alsArray(), 'entfernt' => $alt->fehlendIn($neu)];
 		});
 	}
 

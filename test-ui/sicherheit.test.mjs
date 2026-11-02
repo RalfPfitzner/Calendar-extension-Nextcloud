@@ -257,12 +257,12 @@ test('15 Schema-Härte: feindliche Schlüssel und zu viele Felder werden abgeleh
 	const vorher = (await json(await admin.get(`${API}/schema`))).schema
 	const feld = (key, extra = {}) => ({ key, label: 'Feld ' + key, typ: 'text', ...extra })
 	const faelle = [
-		[{ abschnitte: [{ titel: 'T', felder: [feld('END:VEVENT')] }] }, /Ungültiger Schlüssel/],
-		[{ abschnitte: [{ titel: 'T', felder: [feld('summary\r\nATTENDEE')] }] }, /Ungültiger Schlüssel/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('END:VEVENT')] }] }, /Feld 1 in Abschnitt 1 \(„Feld END:VEVENT“\): Der Schlüssel „END:VEVENT“ ist ungültig/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('summary\r\nATTENDEE')] }] }, /Der Schlüssel „summary ATTENDEE“ ist ungültig/],
 		[{ abschnitte: [{ titel: 'T', felder: [feld('titel')] }] }, /reserviert/],
 		[{ abschnitte: [{ titel: 'T', felder: Array.from({ length: 51 }, (_, i) => feld(`f${i}`)) }] }, /Höchstens 50 Felder/],
-		[{ abschnitte: [{ titel: 'T', felder: [feld('a', { maxlen: 999999 })] }] }, /maxlen/],
-		[{ abschnitte: [{ titel: 'T', felder: [feld('a', { typ: 'html' })] }] }, /unbekannten Typ/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('a', { maxlen: 999999 })] }] }, /„Max\. Zeichen“ muss eine ganze Zahl/],
+		[{ abschnitte: [{ titel: 'T', felder: [feld('a', { typ: 'html' })] }] }, /Der Typ ist unbekannt/],
 		[{ abschnitte: [{ titel: 'T', felder: [feld('a', { label: '<img src=x onerror=alert(1)>'.repeat(10) })] }] }, /zu lang/],
 		[{ abschnitte: 'kaputt' }, /Liste/],
 	]
