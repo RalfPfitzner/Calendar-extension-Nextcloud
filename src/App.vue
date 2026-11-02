@@ -273,15 +273,19 @@ onBeforeUnmount(() => {
 	beobachter?.disconnect()
 })
 
-/** Änderung an Filter, Seite oder Kalender aus der Liste. */
-function aendern(neu) {
+/**
+ * Änderung an Filter, Seite oder Kalender aus der Liste. Schritte des Nutzers bekommen einen neuen Verlaufseintrag;
+ * `ersetzen` (die Liste gleicht die vom Server korrigierte Seite an) ersetzt den Eintrag, sonst hängt die Zurück-Taste
+ * fest (Q-KAL-07).
+ */
+function aendern(neu, { ersetzen = false } = {}) {
 	if (neu.kalender && neu.kalender !== zustand.kalender) {
 		// Auswahl merken; schlägt das fehl, bleibt nur die Vorbelegung beim nächsten Mal falsch.
 		kalenderWaehlen(Number(neu.kalender)).catch(() => {})
 		hinweis.value = ''
 	}
 	Object.assign(zustand, neu)
-	adresseNeu(true)
+	adresseNeu(!ersetzen)
 }
 
 function oeffnen(termin) {
