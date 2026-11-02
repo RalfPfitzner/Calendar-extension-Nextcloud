@@ -38,7 +38,7 @@ Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist de
 
 - In der Vorgabe sind alle Felder Freitext (auch „Anzahl der Teilnehmenden“, damit „ca. 20“ oder „2 Klassen“ geht; wer Zahlen erzwingen will, stellt den Typ im Schema auf „Zahl“), mehrzeilig wo sinnvoll, höchstens 5000 Zeichen. Leere Felder entfernen die Eigenschaft.
 - Pflicht ist nur der Titel; bei externem Ort die Adresse. Pflichtfelder, Längen, Optionen und Typen prüft der Server nach dem Schema; eine eingetragene E-Mail-Adresse muss gültig sein.
-- Werte je Typ: Text wie eingegeben (einzeilig ohne Umbrüche), Zahl als eingegebene Zeichenkette (`12` oder `12,5`), Auswahl eine der Optionen, Ja/Nein als `1` oder fehlende Eigenschaft, Datum als `JJJJ-MM-TT`.
+- Werte je Typ: Text wie eingegeben (einzeilig ohne Umbrüche), Zahl als eingegebene Zeichenkette (`12` oder `12,5`), Auswahl eine der Optionen (ein gespeicherter Wert, den der Admin aus den Optionen entfernt hat, bleibt erhalten und lässt sich unverändert speichern), Ja/Nein als `1` oder fehlende Eigenschaft, Datum als `JJJJ-MM-TT`.
 - Ort mit Standardort (Einstellung `ort_vorgabe`): Ist `LOCATION` leer oder gleich dem Standardort, zeigt das Formular den Standardort; jeder andere Ort gilt als externer Ort. Beim Speichern mit Standardort wird genau dieser Text als Ort eingetragen. Eine eigene Eigenschaft für „extern“ gibt es nicht.
 - Ort ohne Standardort: ein freies Ortsfeld, leer erlaubt (`LOCATION` wird dann entfernt).
 - Die Schlüssel sind Datenformat. Wer im Schema einen Schlüssel ändert, trennt das Feld von bereits erfassten Werten; die App liest und löscht nur Eigenschaften, deren Schlüssel im aktuellen Schema stehen, alle anderen bleiben unangetastet.
