@@ -55,6 +55,17 @@ const hatFokus = (locator) => locator.evaluate((e) => new Promise((ja) => {
 	pruefen()
 }))
 
+/** Wartet bis zu 3 Sekunden, bis die Funktion den erwarteten Wert liefert (die Oberfläche baut nach Rückfragen verzögert um). */
+async function wirdZu(lesen, erwartet) {
+	const start = Date.now()
+	let wert = await lesen()
+	while (wert !== erwartet && Date.now() - start < 3000) {
+		await new Promise((r) => setTimeout(r, 50))
+		wert = await lesen()
+	}
+	return wert
+}
+
 /** Wartet auf das PUT /schema der Oberfläche und liefert dessen Schema. */
 async function speichernMitAnfrage(bereich) {
 	const anfrage = seite.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/schema'))
@@ -490,7 +501,7 @@ test('Abschnitt entfernen fragt nach, Fokus danach auf den nächsten Abschnitt o
 	const frage = rueckfrage('Abschnitt 2 („2. Kontaktdaten“) entfernen?')
 	await frage.getByText('Der Abschnitt enthält 5 Felder; sie werden mit entfernt.').waitFor()
 	await antworten(frage, 'Abschnitt entfernen')
-	assert.equal(await titel(2).inputValue(), '3. Teilnehmende Gruppe')
+	assert.equal(await wirdZu(() => titel(2).inputValue(), '3. Teilnehmende Gruppe'), '3. Teilnehmende Gruppe')
 	assert.equal(await hatFokus(titel(2)), true)
 	await seite.waitForFunction(() => document.querySelector('#calendar-planning-admin .editor [role=status]').textContent.includes('entfernt'))
 
@@ -502,11 +513,11 @@ test('Abschnitt entfernen fragt nach, Fokus danach auf den nächsten Abschnitt o
 
 	// Neuer Abschnitt: Fokus in seiner Überschrift; leer entfernen geht ohne Rückfrage.
 	await neu.click()
-	assert.equal(await titel(4).inputValue(), '4. Abschnitt')
+	assert.equal(await wirdZu(() => titel(4).inputValue(), '4. Abschnitt'), '4. Abschnitt')
 	assert.equal(await hatFokus(titel(4)), true)
 	await entfernen(4, '4. Abschnitt').click()
 	assert.equal(await seite.getByRole('dialog').count(), 0)
-	assert.equal(await titel(4).count(), 0)
+	assert.equal(await wirdZu(() => titel(4).count(), 0), 0)
 	assert.equal(await hatFokus(neu), true)
 	assert.deepEqual(dialoge, [])
 })
