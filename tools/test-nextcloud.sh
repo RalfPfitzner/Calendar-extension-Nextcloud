@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Startet eine Test-Nextcloud in Docker mit dieser App (aus dem Arbeitsverzeichnis) und der Kalender-App.
 # Danach laufen die Browser-Tests mit `npm run test:ui`. Nur für Tests, nie gegen eine echte Instanz.
-# Aufruf: tools/test-nextcloud.sh          (Container „calplan-nc“ auf Port 8080, Nextcloud 35.0.2)
+# Aufruf: tools/test-nextcloud.sh          (Container „calplan-nc“ auf Port 8080, Nextcloud 35.0.2;
+#                                         andere mit NC_NAME und NC_PORT, z. B. für parallele Arbeitskopien)
 #         NC_VERSION=34.0.5 KALENDER_VERSION=6.6.3 tools/test-nextcloud.sh   (andere Hauptversion)
 #         tools/test-nextcloud.sh --stopp  (Container entfernen)
 set -euo pipefail
 
-NAME=calplan-nc
+NAME=${NC_NAME:-calplan-nc}
 PORT=${NC_PORT:-8080}
 NC_VERSION=${NC_VERSION:-35.0.2}
 NC_IMAGE=nextcloud:$NC_VERSION-apache
