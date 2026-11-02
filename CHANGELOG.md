@@ -13,7 +13,7 @@ Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-al
 ### Behoben
 - **Ort-Auswahl** wieder richtig angeordnet: Knöpfe direkt bei der Beschriftung, als Gruppe „Ort“, per Tastatur bedienbar (U-KAL-01).
 - **Rückmeldung nach dem Speichern:** Erfolg und Fehler erscheinen neben dem Knopf und werden angesagt, der Fokus geht auf die Meldung bzw. das betroffene Feld; die Erfolgsmeldung verschwindet bei der nächsten Änderung (U-KAL-03, Q-KAL-11).
-- **Zurück-Taste und „Zur Liste“** fragen nach, wenn Eingaben noch nicht gespeichert sind („Weiter bearbeiten“ behält alles); beim Schließen warnt der Browser (U-KAL-04).
+- **Zurück-, Vor-Taste und „Zur Liste“** fragen nach, wenn Eingaben noch nicht gespeichert sind; „Weiter bearbeiten“ behält alles samt Verlauf, „Verwerfen“ hinterlässt keine doppelten Einträge im Verlauf; beim Schließen warnt der Browser (U-KAL-04).
 - **Konflikt beim Speichern:** Die Eingaben bleiben stehen. Das Formular zeigt, welche Felder sich inzwischen geändert haben, und bietet „Meine Eingaben behalten und erneut speichern“ oder „Neuen Stand laden“, jeweils mit Rückfrage (U-KAL-05).
 - **Entfernte Auswahl-Option:** Ein gespeicherter Wert bleibt erhalten („nicht mehr in der Liste“) und der Termin lässt sich weiter speichern; neue Werte müssen in der Liste stehen (Q-KAL-09).
 - **Lesezeichen auf einen nicht mehr verfügbaren Kalender:** Hinweis und korrigierte Adresse statt stillem Austausch (Q-KAL-12).
@@ -41,7 +41,7 @@ Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-al
 - **Fehlermeldungen** bei zu vielen Anfragen, abgelaufener Anmeldung, fehlender Berechtigung, Wartung und Serverfehlern statt pauschal „Verbindung fehlgeschlagen“ (U-KAL-06).
 - **Fokus und Ansage** beim Wechsel zwischen Liste und Formular; nur noch eine Hauptlandmarke (U-KAL-08, U-KAL-13).
 - **Nur-Lesen-Ansicht** als gut lesbare Liste, per Tastatur erreichbar (U-KAL-09).
-- **Formular** mit Nextcloud-Bedienelementen, alle Texte Deutsch (U-KAL-17).
+- **Formular** mit Nextcloud-Bedienelementen, Auswahlfelder als native Auswahllisten im Nextcloud-Stil (auf dem Handy besser bedienbar, mit Fehlerkennzeichnung), alle Texte Deutsch; Meldungen werden einmal angesagt, der Fokus bleibt auf „Speichern“ bzw. geht bei Eingabefehlern ins Feld (U-KAL-17).
 - **Schnellerer Start:** Ein Termin aus der Adresse lädt parallel zur Kalenderliste, Formular und Rückfrage-Dialog werden erst bei Bedarf geladen (P-KAL-05).
 - **Einstellungsseite:** Hinweis auf ungespeicherte Änderungen, Rückfrage beim Verlassen; bei schmalem Fenster Karten statt Tabelle, kein seitliches Scrollen von 1280 bis 600 Pixel; verständliche Fehlermeldungen (Abschnitt und Feld ab 1 gezählt, mit Bezeichnung); Feld entfernen mit „Rückgängig“, mehrfach in umgekehrter Reihenfolge, Fokus bleibt beim Verschieben am Feld (U-KAL-10, U-KAL-18, U-KAL-19, U-KAL-20).
 - **Einstellungsseite, Barrierefreiheit:** Rückfragen als Dialog von Nextcloud mit Knöpfen, die die Aktion nennen („Trotzdem speichern“/„Weiter bearbeiten“, „Vorlage laden“/„Abbrechen“, „Abschnitt entfernen“/„Behalten“), Fokus danach zurück; nach Entfernen von Feldern und Abschnitten steht der Fokus am nachrückenden Element, ein neuer Abschnitt bekommt den Fokus in seiner Überschrift; Erfolgsmeldungen in einem Live-Bereich; jede Eingabe hat ein echtes, eindeutiges Label („Pflicht Feld 2 in Abschnitt 1 („Name“)“), in der Karten-Ansicht sichtbar und anklickbar; kein seitliches Scrollen auch bei 320 Pixel.
