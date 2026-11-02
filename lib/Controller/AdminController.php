@@ -8,6 +8,7 @@ use OCA\CalendarPlanning\AppInfo\Application;
 use OCA\CalendarPlanning\Service\Einstellungen;
 use OCA\CalendarPlanning\Service\EinstellungenSpeicher;
 use OCA\CalendarPlanning\Service\PlanungException;
+use OCA\CalendarPlanning\Service\Protokoll;
 use OCA\CalendarPlanning\Service\Schema;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -95,11 +96,12 @@ class AdminController extends Controller {
 		} catch (PlanungException $e) {
 			$status = $e->getCode() === Http::STATUS_INTERNAL_SERVER_ERROR ? Http::STATUS_INTERNAL_SERVER_ERROR : Http::STATUS_BAD_REQUEST;
 			if ($status === Http::STATUS_INTERNAL_SERVER_ERROR) {
-				$this->logger->error('Kalender-Planung: ' . $e->getMessage());
+				$this->logger->error(Protokoll::text($e), ['app' => Application::APP_ID]);
 			}
 			return new JSONResponse(['fehler' => $e->getMessage()], $status);
 		} catch (\Throwable $e) {
-			$this->logger->error('Kalender-Planung: ' . $e->getMessage(), ['exception' => $e]);
+			// Wie im ApiController ohne Meldung und ohne Ausnahme-Objekt (S-KAL-01): Das Schema enthält Admin-Texte.
+			$this->logger->error(Protokoll::text($e), ['app' => Application::APP_ID]);
 			return new JSONResponse(['fehler' => 'Interner Fehler, Details im Nextcloud-Protokoll'], 500);
 		}
 	}

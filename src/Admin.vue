@@ -32,7 +32,13 @@
 						Ungespeicherte Änderungen an den Vorgaben.
 					</NcNoteCard>
 				</div>
-				<NcNoteCard v-if="einstellungenMeldung" :type="einstellungenMeldung.typ">
+				<!-- Erfolg und Hinweise in einem dauerhaften Live-Bereich (NcNoteCard setzt role=alert nur bei Fehlern). -->
+				<div aria-live="polite">
+					<NcNoteCard v-if="einstellungenMeldung && einstellungenMeldung.typ !== 'error'" :type="einstellungenMeldung.typ">
+						{{ einstellungenMeldung.text }}
+					</NcNoteCard>
+				</div>
+				<NcNoteCard v-if="einstellungenMeldung && einstellungenMeldung.typ === 'error'" type="error">
 					{{ einstellungenMeldung.text }}
 				</NcNoteCard>
 				<div class="admin__aktionen">
@@ -55,7 +61,12 @@
 						Ungespeicherte Änderungen an den Feldern. Erst „Felder speichern“ übernimmt sie.
 					</NcNoteCard>
 				</div>
-				<NcNoteCard v-if="schemaMeldung" :type="schemaMeldung.typ">
+				<div aria-live="polite">
+					<NcNoteCard v-if="schemaMeldung && schemaMeldung.typ !== 'error'" :type="schemaMeldung.typ">
+						{{ schemaMeldung.text }}
+					</NcNoteCard>
+				</div>
+				<NcNoteCard v-if="schemaMeldung && schemaMeldung.typ === 'error'" type="error">
 					{{ schemaMeldung.text }}
 				</NcNoteCard>
 				<div class="admin__aktionen">
@@ -71,6 +82,7 @@
 				</div>
 			</form>
 		</template>
+		<Rueckfrage ref="rueckfrage" />
 	</div>
 </template>
 
@@ -79,6 +91,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import Rueckfrage from './components/Rueckfrage.vue'
 import SchemaEditor from './components/SchemaEditor.vue'
 import { adminEinstellungenLaden, adminEinstellungenSpeichern, fehlertext, schemaLaden, schemaSpeichern } from './api.js'
 
@@ -90,6 +103,7 @@ const ladeFehler = ref('')
 const einstellungenMeldung = ref(null)
 const schemaMeldung = ref(null)
 const speichert = ref(false)
+const rueckfrage = ref(null)
 
 /** Zuletzt geladener oder gespeicherter Stand, zum Erkennen ungespeicherter Änderungen (U-KAL-10). */
 const schemaGespeichert = ref(null)
@@ -159,8 +173,13 @@ async function schemaSichern() {
 	// Fallen gespeicherte Schlüssel weg, hängen erfasste Werte an keinem Feld mehr (Q-KAL-01): vorher nachfragen.
 	const bleibt = new Set(felderVon(schema.value).map((feld) => feld.key))
 	const weg = felderVon(schemaGespeichert.value).filter((feld) => !bleibt.has(feld.key))
-	if (weg.length > 0 && !window.confirm(`Diese Felder sind nach dem Speichern nicht mehr im Formular: ${weg.map(feldname).join(', ')}. `
-		+ 'Bereits in Terminen erfasste Werte bleiben dort gespeichert, erscheinen aber erst wieder, wenn ein Feld mit demselben Schlüssel angelegt wird. Trotzdem speichern?')) {
+	if (weg.length > 0 && !await rueckfrage.value.fragen({
+		titel: weg.length === 1 ? 'Ein Feld fällt weg' : `${weg.length} Felder fallen weg`,
+		text: `Diese Felder sind nach dem Speichern nicht mehr im Formular: ${weg.map(feldname).join(', ')}. `
+			+ 'Bereits in Terminen erfasste Werte bleiben dort gespeichert, erscheinen aber erst wieder, wenn ein Feld mit demselben Schlüssel angelegt wird.',
+		ja: 'Trotzdem speichern',
+		nein: 'Weiter bearbeiten',
+	})) {
 		return
 	}
 	speichert.value = true
@@ -182,8 +201,13 @@ async function schemaSichern() {
 	}
 }
 
-function laden(quelle, name) {
-	if (!window.confirm(`„${name}“ in den Editor laden? Die aktuellen Felder im Editor werden ersetzt; gespeichert wird erst mit „Felder speichern“.`)) {
+async function laden(quelle, name) {
+	if (!await rueckfrage.value.fragen({
+		titel: `${name} laden?`,
+		text: 'Die aktuellen Felder im Editor werden ersetzt; gespeichert wird erst mit „Felder speichern“.',
+		ja: 'Vorlage laden',
+		nein: 'Abbrechen',
+	})) {
 		return
 	}
 	schema.value = kopie(quelle)

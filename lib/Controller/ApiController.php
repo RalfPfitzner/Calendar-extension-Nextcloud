@@ -8,6 +8,7 @@ use OCA\CalendarPlanning\AppInfo\Application;
 use OCA\CalendarPlanning\Service\Einstellungen;
 use OCA\CalendarPlanning\Service\KalenderService;
 use OCA\CalendarPlanning\Service\PlanungException;
+use OCA\CalendarPlanning\Service\Protokoll;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -103,26 +104,8 @@ class ApiController extends Controller {
 		}
 	}
 
-	/**
-	 * Protokollzeile zu einem unerwarteten Fehler, ohne Inhalte (S-KAL-01).
-	 *
-	 * Nie die Meldung oder die Ausnahme selbst: Fehler aus dem Parser oder der Datenbank zitieren Termintext
-	 * und Kontaktdaten, und Nextcloud schreibt bei `['exception' => $e]` den Stacktrace samt Argumenten
-	 * (also auch das iCalendar und die Formularwerte) ins Protokoll. Darum nur Klassen, Codes und die Stelle,
-	 * den Termin als kurzen Hash: Wer den Termin kennt, kann ihn zuordnen, alle anderen lesen nichts daraus.
-	 */
+	/** Protokollzeile zu einem unerwarteten Fehler, ohne Inhalte (S-KAL-01, siehe Protokoll::text). */
 	public static function protokollText(\Throwable $e, ?int $kalender = null, ?string $termin = null): string {
-		$kette = [];
-		for ($fehler = $e; $fehler !== null && count($kette) < 5; $fehler = $fehler->getPrevious()) {
-			$kette[] = $fehler::class . ' (Code ' . (int)$fehler->getCode() . ', ' . basename($fehler->getFile()) . ':' . $fehler->getLine() . ')';
-		}
-		$text = 'Kalender-Planung: interner Fehler ' . implode(' <- ', $kette);
-		if ($kalender !== null) {
-			$text .= ', Kalender ' . $kalender;
-		}
-		if ($termin !== null) {
-			$text .= ', Termin #' . substr(hash('sha256', $termin), 0, 12);
-		}
-		return $text . '. Inhalte werden absichtlich nicht protokolliert.';
+		return Protokoll::text($e, $kalender, $termin);
 	}
 }

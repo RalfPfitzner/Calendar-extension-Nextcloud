@@ -64,6 +64,10 @@ class SchemaTest extends TestCase {
 		yield 'Schlüssel zu lang' => [self::schema(self::feld(str_repeat('a', 32))), 'höchstens 31 Zeichen'];
 		yield 'Schlüssel kein Text' => [self::schema(['key' => 5] + self::feld('a')), 'Der Schlüssel fehlt oder ist ungültig'];
 		yield 'reservierter Schlüssel' => [self::schema(self::feld('titel')), 'reserviert'];
+		// `$` im Muster ließe einen Umbruch am Ende durch; daraus würde die Eigenschaft „X-CALPLAN-ABC\n“.
+		yield 'Schlüssel mit Umbruch am Ende' => [self::schema(self::feld("abc\n")), 'ist ungültig. Erlaubt sind Kleinbuchstaben'];
+		// X-CALPLAN-LINK merkt sich die Link-Zeile der Beschreibung.
+		yield 'Schlüssel link reserviert' => [self::schema(self::feld('link')), 'Der Schlüssel „link“ ist für das Formular reserviert'];
 		yield 'doppelter Schlüssel' => [self::schema(self::feld('a'), self::feld('a')), 'Feld 2 in Abschnitt 1 („Feld a“): Der Schlüssel „a“ ist schon bei Feld 1 in Abschnitt 1 („Feld a“) vergeben.'];
 		yield 'unbekannter Typ' => [self::schema(self::feld('a', ['typ' => 'html'])), 'Der Typ ist unbekannt'];
 		yield 'maxlen zu groß' => [self::schema(self::feld('a', ['maxlen' => 5001])), '„Max. Zeichen“ muss eine ganze Zahl von 1 bis 5000 sein'];

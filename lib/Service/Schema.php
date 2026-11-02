@@ -18,7 +18,8 @@ final class Schema {
 	/** Typen, deren Werte einzeilig sind (Umbrüche werden zu Leerzeichen). */
 	public const EINZEILIG = ['text', 'email', 'tel', 'number', 'select', 'checkbox', 'date'];
 
-	public const SCHLUESSEL_MUSTER = '/^[a-z][a-z0-9_]{0,30}$/';
+	/** `\z` statt `$`: `$` ließe einen Zeilenumbruch am Ende durch („abc\n“). */
+	public const SCHLUESSEL_MUSTER = '/^[a-z][a-z0-9_]{0,30}\z/';
 	public const MAX_FELDER = 50;
 	public const MAX_ABSCHNITTE = 20;
 	public const MAX_IN_LISTE = 3;
@@ -27,10 +28,13 @@ final class Schema {
 	public const MAX_TEXT = 200;
 	public const MAX_JSON = 65536;
 
-	/** Schlüssel, die das Formular selbst oder die Antwort der API belegen. */
+	/**
+	 * Schlüssel, die das Formular selbst oder die Antwort der API belegen, und `link`: Dessen Eigenschaft
+	 * X-CALPLAN-LINK merkt sich die zuletzt geschriebene Link-Zeile der Beschreibung (Planung::EIGENSCHAFT_LINK).
+	 */
 	public const RESERVIERT = [
 		'titel', 'ort', 'ort_extern', 'uid', 'beginn', 'ende', 'ganztags', 'serie', 'beschreibung',
-		'geplant', 'kalender', 'objekt', 'etag', 'schreibbar', 'felder',
+		'geplant', 'kalender', 'objekt', 'etag', 'schreibbar', 'felder', 'link',
 	];
 
 	/** @var list<array{titel:string,felder:list<array{key:string,label:string,typ:string,pflicht:bool,maxlen:int,optionen:list<string>,inListe:bool}>}> */

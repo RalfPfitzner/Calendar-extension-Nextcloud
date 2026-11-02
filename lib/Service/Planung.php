@@ -24,8 +24,14 @@ class Planung {
 	/** Höchstlänge je Feld (Zeichen), damit niemand versehentlich riesige Termine erzeugt. Das Schema darf weniger erlauben. */
 	public const MAX_LAENGE = Schema::MAX_LAENGE;
 
-	/** Zeile mit einem Link dieser App auf das Formular eines Termins (siehe KalenderService::link), egal mit welchem Linktext. */
-	private const LINK_MUSTER = '#^.*https?://\\S*/apps/calendar_planning/\\?kalender=\\d+&termin=\\S+\\s*$#';
+	/**
+	 * Eigenschaft mit der zuletzt in die Beschreibung geschriebenen Link-Zeile (Linktext plus Adresse). Nur eine Zeile
+	 * mit genau diesem Inhalt gilt später als eigener Link; der Schlüssel `link` ist dafür in Schema::RESERVIERT.
+	 */
+	public const EIGENSCHAFT_LINK = self::PRAEFIX . 'LINK';
+
+	/** Adresse dieser App auf das Formular eines Termins (siehe KalenderService::link), als ganzer Text. */
+	private const APP_ADRESSE = '#^https?://\S+/apps/calendar_planning/\?kalender=\d+&termin=\S+\z#';
 
 	/** Wert, mit dem ein angekreuztes Ja/Nein-Feld im Termin steht. */
 	public const JA = '1';
@@ -199,7 +205,7 @@ class Planung {
 				}
 				break;
 			case 'number':
-				if (preg_match('/^-?\d{1,15}([.,]\d{1,6})?$/', $wert) !== 1) {
+				if (preg_match('/^-?\d{1,15}([.,]\d{1,6})?\z/', $wert) !== 1) {
 					throw new PlanungException("„{$label}“ muss eine Zahl sein");
 				}
 				break;
@@ -230,6 +236,8 @@ class Planung {
 			throw new PlanungException("„{$label}“ ist kein Text");
 		}
 		$wert = str_replace("\r\n", "\n", (string)$wert);
+		// Zeilen- und Absatztrenner (U+2028/U+2029) sind Umbrüche, die kaum ein Programm zeigt: wie \n behandeln.
+		$wert = (string)preg_replace(Einstellungen::TRENNER, "\n", $wert);
 		if ($einzeilig) {
 			// Umbrüche und Tabs zu einem Leerzeichen, sonstige Steuerzeichen raus.
 			$wert = (string)preg_replace('/[\r\n\t]+/', ' ', $wert);
@@ -299,21 +307,56 @@ class Planung {
 		}
 	}
 
+	/**
+	 * Setzt die Link-Zeile „<Linktext><Adresse>“ in die Beschreibung (Q-KAL-03).
+	 *
+	 * Als eigene Zeile gilt nur eine, die genau so lautet wie die zuletzt geschriebene (EIGENSCHAFT_LINK) oder wie die
+	 * neue. Termine ohne gemerkte Zeile (von Versionen bis 1.0.1 geschrieben) erkennt die App an „<aktueller oder früherer Vorgabe-
+	 * Linktext><Adresse dieser App>“, ohne weiteren Text davor oder danach. Alles andere gehört dem Nutzer und bleibt,
+	 * auch Zeilen mit fremdem Text vor einer Planungs-Adresse. Die eigene Zeile wird an ihrer Stelle ersetzt; die
+	 * Zeilenenden der Beschreibung (`\r\n` oder `\n`) bleiben, und steht die Zeile schon so da, bleibt die
+	 * Beschreibung unangetastet.
+	 */
 	private function linkEinfuegen(VEvent $ereignis, string $link): void {
+		$neu = $this->einstellungen->linkText . $link;
+		$gemerkt = isset($ereignis->{self::EIGENSCHAFT_LINK}) ? (string)$ereignis->{self::EIGENSCHAFT_LINK}->getValue() : '';
 		$beschreibung = (string)($ereignis->DESCRIPTION ?? '');
-		$linkText = $this->einstellungen->linkText;
-		// Schon da, wenn genau diese Zeile (aktueller Linktext plus Adresse) in der Beschreibung steht.
-		if (in_array($linkText . $link, explode("\n", $beschreibung), true)) {
-			return;
+		// Abwechselnd Zeile und Zeilenende: [Zeile 0, Ende 0, Zeile 1, …, letzte Zeile].
+		$teile = preg_split('/(\r\n|\n|\r)/', $beschreibung, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$beschreibung];
+		$eigene = [];
+		for ($i = 0; $i < count($teile); $i += 2) {
+			if ($this->istEigeneLinkZeile($teile[$i], $neu, $gemerkt)) {
+				$eigene[] = $i;
+			}
 		}
-		// Einen veralteten Link (z. B. nach Umzug der Instanz oder mit altem Linktext) ersetzen statt doppeln.
-		// Erkannt wird er nur an der Adresse dieser App (LINK_MUSTER), nie am Linktext allein: Zeilen, die zufällig
-		// mit dem Linktext beginnen („Info: Schlüssel beim Hausmeister“), gehören dem Nutzer und bleiben (Q-KAL-03).
-		$zeilen = array_filter(
-			explode("\n", $beschreibung),
-			fn (string $zeile) => preg_match(self::LINK_MUSTER, $zeile) !== 1,
-		);
-		$beschreibung = rtrim(implode("\n", $zeilen));
-		$ereignis->DESCRIPTION = ($beschreibung === '' ? '' : $beschreibung . "\n\n") . $linkText . $link;
+		if ($eigene === []) {
+			$text = rtrim($beschreibung);
+			$ereignis->DESCRIPTION = ($text === '' ? '' : $text . "\n\n") . $neu;
+		} elseif (count($eigene) > 1 || $teile[$eigene[0]] !== $neu) {
+			$teile[$eigene[0]] = $neu;
+			// Weitere eigene Zeilen (doppelt eingefügt) samt ihrem vorangehenden Zeilenende entfernen.
+			foreach (array_slice($eigene, 1) as $i) {
+				$teile[$i] = null;
+				$teile[$i - 1] = null;
+			}
+			$ereignis->DESCRIPTION = implode('', array_filter($teile, fn (?string $teil) => $teil !== null));
+		}
+		$this->setzen($ereignis, self::EIGENSCHAFT_LINK, $neu);
+	}
+
+	private function istEigeneLinkZeile(string $zeile, string $neu, string $gemerkt): bool {
+		$zeile = rtrim($zeile, " \t");
+		if ($zeile === $neu || ($gemerkt !== '' && $zeile === $gemerkt)) {
+			return true;
+		}
+		if ($gemerkt !== '') {
+			return false;
+		}
+		foreach (array_unique([$this->einstellungen->linkText, Einstellungen::LINK_TEXT_VORGABE]) as $linkText) {
+			if (str_starts_with($zeile, $linkText) && preg_match(self::APP_ADRESSE, substr($zeile, strlen($linkText))) === 1) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

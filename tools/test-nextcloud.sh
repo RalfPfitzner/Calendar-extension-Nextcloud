@@ -77,7 +77,8 @@ docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
 
 # -v entfernt auch das anonyme Volume des Images (/var/www/html); sonst bleibt je Lauf eines liegen und füllt die Platte.
 docker rm -f -v "$NAME" >/dev/null 2>&1 || true
-docker run -d --name "$NAME" -p "$PORT:80" \
+# Nur an 127.0.0.1: Die Test-Nextcloud hat bekannte Passwörter und soll aus dem Netz nicht erreichbar sein.
+docker run -d --name "$NAME" -p "127.0.0.1:$PORT:80" \
 	-e SQLITE_DATABASE=nc -e NEXTCLOUD_ADMIN_USER=admin -e NEXTCLOUD_ADMIN_PASSWORD="$ADMIN_PASS" \
 	-e NEXTCLOUD_TRUSTED_DOMAINS="localhost 127.0.0.1" \
 	-v "$(hostpfad "$APP"):/var/www/html/custom_apps/calendar_planning:ro" "$NC_IMAGE" >/dev/null

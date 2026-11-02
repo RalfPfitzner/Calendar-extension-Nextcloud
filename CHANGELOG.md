@@ -5,26 +5,34 @@
 Review-Befunde vom 29.10.2026, Teil 1 (Plan `docs/superpowers/plans/2026-11-02-review-alle.md`, PR 1).
 
 ### Hinweise zum Update
-- Keine Änderung am Datenformat (`X-CALPLAN-…`), keine neuen Einstellungen.
+- Neue Eigenschaft `X-CALPLAN-LINK` im Termin: Sie merkt sich die zuletzt geschriebene Link-Zeile der Beschreibung. Der Feldschlüssel `link` ist deshalb reserviert; ein gespeichertes Schema mit einem Feld `link` gilt als ungültig (die App nimmt dann die Vorgabe und meldet es im Protokoll) und muss vorher umbenannt werden. Sonst keine neuen Einstellungen.
+- Das Feldschema steht ab dem nächsten Speichern als „lazy“ in der App-Konfiguration; bestehende Werte bleiben lesbar. Wer es per `occ` setzt: `occ config:app:set calendar_planning schema --lazy --value …`.
+- Die Sperre gegen gleichzeitiges Speichern wirkt nur mit eingeschaltetem File-Locking (`filelocking.enabled`, Vorgabe an).
 - Ein Feldschema über 64 KiB lässt sich nicht mehr speichern (vorher wurde es angenommen und beim nächsten Laden still durch die Vorgabe ersetzt).
 
 ### Behoben
 - **Feld-Editor:** Das Umbenennen eines bestehenden Feldes ändert nicht mehr still dessen Schlüssel; gespeicherte Werte bleiben am Feld. Fallen gespeicherte Felder weg, fragt die Seite vor dem Speichern nach und nennt sie danach (Q-KAL-01).
 - **Feld-Editor:** Optionen eines Auswahlfeldes lassen sich wieder Zeile für Zeile tippen, mit Enter und Leerzeichen (Q-KAL-02).
-- **Beschreibung:** Beim Speichern bleiben Zeilen stehen, die zufällig mit dem Linktext beginnen; ersetzt wird nur der eigene Link der App (Q-KAL-03).
+- **Beschreibung:** Beim Speichern bleiben Zeilen stehen, die zufällig mit dem Linktext beginnen oder eigenen Text vor einer Planungs-Adresse tragen; ersetzt wird nur die eigene Link-Zeile der App, an ihrer Stelle. Beschreibungen mit `\r\n` werden nicht mehr umsortiert (Q-KAL-03).
+- **Liste:** Ein defekter Termin im Kalender lässt die Terminliste nicht mehr scheitern; er wird übersprungen und ohne Inhalt protokolliert.
+- **Speichern:** Ist der Termin gerade von einer anderen Anfrage gesperrt, heißt es „Der Termin wird gerade gespeichert. Bitte gleich noch einmal versuchen.“ statt „neu laden“. Ein Fehler beim Freigeben der Sperre überschreibt das Ergebnis nicht mehr.
+- **Feldschlüssel:** Ein Zeilenumbruch am Ende eines Schlüssels (`"abc\n"`) wird abgelehnt (`\z` statt `$` in den Prüfmustern).
 - **Zeiten ohne Zeitzone** („Floating“) werden mit ihrer Ortszeit angezeigt statt 1–2 Stunden verschoben (Q-KAL-05).
 - **Gleichzeitiges Speichern** desselben Termins: genau eine Speicherung gewinnt, die andere bekommt den Konflikt-Hinweis (S-KAL-03, Q-KAL-10).
 
 ### Sicherheit
 - Unerwartete Fehler stehen ohne Termininhalt und Kontaktdaten im Nextcloud-Protokoll (S-KAL-01).
-- Unsichtbare und Richtungszeichen werden aus Titel, Feldern und Einstellungen entfernt (S-KAL-06).
+- Unsichtbare und Richtungszeichen werden aus Titel, Feldern und Einstellungen entfernt, auch Tag-Zeichen (U+E0000–U+E007F), Graphem-Verbinder, Hangul-Füllzeichen; Zeilen- und Absatztrenner (U+2028/U+2029) werden zu Leerzeichen bzw. Umbrüchen (S-KAL-06).
+- Fehler auf der Einstellungsseite stehen wie in der übrigen App ohne Meldungstext und ohne Ausnahme-Objekt im Protokoll.
+- Die Test-Nextcloud (`tools/test-nextcloud.sh`) lauscht nur auf 127.0.0.1.
 - Ein zu großes Feldschema wird beim Speichern mit einer Meldung abgelehnt (S-KAL-02).
 - **Release:** Das Paket wird ohne Schreib- und OIDC-Rechte gebaut; erst ein eigener Job prüft die Prüfsumme, attestiert es und hängt es an den Release-Entwurf. Ein veröffentlichtes Release wird nicht mehr überschrieben (S-KAL-04).
 - **Lieferkette:** actionlint und die Nextcloud-Test-Images per Digest, Kalender-App, Impersonate und die Server-Dateien für den API-Check per SHA-256; gitleaks in der CI; `npm audit` blockiert ab „moderate“ (`minimatch` für `webdav` per `overrides` angehoben) (S-KAL-05).
 - `SECURITY.md`: unterstützte Versionen, App-ID `calendar_planning`, Meldeweg und Prüfung der Pakete (S-KAL-07).
 
 ### Geändert
-- **Einstellungsseite:** Hinweis auf ungespeicherte Änderungen, Rückfrage beim Verlassen; bei schmalem Fenster Karten statt Tabelle, kein seitliches Scrollen von 1280 bis 600 Pixel; verständliche Fehlermeldungen (Abschnitt und Feld ab 1 gezählt, mit Bezeichnung); Feld entfernen mit „Rückgängig“, Fokus bleibt beim Verschieben am Feld (U-KAL-10, U-KAL-18, U-KAL-19, U-KAL-20).
+- **Einstellungsseite:** Hinweis auf ungespeicherte Änderungen, Rückfrage beim Verlassen; bei schmalem Fenster Karten statt Tabelle, kein seitliches Scrollen von 1280 bis 600 Pixel; verständliche Fehlermeldungen (Abschnitt und Feld ab 1 gezählt, mit Bezeichnung); Feld entfernen mit „Rückgängig“, mehrfach in umgekehrter Reihenfolge, Fokus bleibt beim Verschieben am Feld (U-KAL-10, U-KAL-18, U-KAL-19, U-KAL-20).
+- **Einstellungsseite, Barrierefreiheit:** Rückfragen als Dialog von Nextcloud mit Knöpfen, die die Aktion nennen („Trotzdem speichern“/„Weiter bearbeiten“, „Vorlage laden“/„Abbrechen“, „Abschnitt entfernen“/„Behalten“), Fokus danach zurück; nach Entfernen von Feldern und Abschnitten steht der Fokus am nachrückenden Element, ein neuer Abschnitt bekommt den Fokus in seiner Überschrift; Erfolgsmeldungen in einem Live-Bereich; jede Eingabe hat ein echtes, eindeutiges Label („Pflicht Feld 2 in Abschnitt 1 („Name“)“), in der Karten-Ansicht sichtbar und anklickbar; kein seitliches Scrollen auch bei 320 Pixel.
 - **CI schneller:** Playwright-Chromium und Composer aus dem Cache; die Test-Nextcloud nimmt Containername und Port aus `NC_NAME`/`NC_PORT` und entfernt ihr Volume mit.
 
 ## [1.0.1] - 2026-11-01

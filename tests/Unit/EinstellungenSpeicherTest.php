@@ -70,4 +70,26 @@ class EinstellungenSpeicherTest extends TestCase {
 		$this->assertSame($neu->alsArray(), $speicher->laden()->schema->alsArray());
 		$this->assertNotSame(Schema::vorgabe()->alsArray(), $speicher->laden()->schema->alsArray());
 	}
+
+	public function testSchemaStehtLazyUndAlteWerteBleibenLesbar(): void {
+		$config = $this->createMock(IAppConfig::class);
+		$gesetzt = [];
+		$config->method('setValueString')->willReturnCallback(function (string $app, string $schluessel, string $wert, bool $lazy = false) use (&$gesetzt) {
+			$gesetzt[$schluessel] = $lazy;
+			return true;
+		});
+		$gelesen = [];
+		// Wie IAppConfig: ein nicht-lazy gespeicherter Wert kommt auch bei `lazy: true` zurück.
+		$alt = Schema::ausArray(self::grossesSchema(1, 10))->alsJson();
+		$config->method('getValueString')->willReturnCallback(function (string $app, string $schluessel, string $vorgabe = '', bool $lazy = false) use (&$gelesen, $alt) {
+			$gelesen[$schluessel] = $lazy;
+			return $schluessel === 'schema' ? $alt : $vorgabe;
+		});
+		$speicher = new EinstellungenSpeicher($config, new NullLogger());
+		$this->assertSame(Schema::ausJson($alt)->alsArray(), $speicher->laden()->schema->alsArray());
+		$this->assertTrue($gelesen['schema']);
+		$this->assertFalse($gelesen['ort_vorgabe'], 'die kurzen Vorgaben bleiben wie bisher');
+		$speicher->schemaSpeichern(self::grossesSchema(1, 10));
+		$this->assertSame(['schema' => true], $gesetzt);
+	}
 }

@@ -21,9 +21,46 @@ function testdatenAnlegen() {
 
 let browser, seite, admin
 let vorgabe
-/** Alle Dialoge der Seite (confirm, beforeunload) mit Typ und Text; `dialogAnnehmen` steuert die Antwort. */
+/**
+ * Dialoge des Browsers mit Typ und Text; `dialogAnnehmen` steuert die Antwort. Erwartet ist nur noch `beforeunload`:
+ * Rückfragen der Seite sind Dialoge von Nextcloud (NcDialog) und werden über ihre Rolle angesprochen.
+ */
 const dialoge = []
 let dialogAnnehmen = true
+
+/** Rückfrage der Seite (NcDialog, außerhalb des Admin-Bereichs eingehängt). */
+const rueckfrage = (name) => seite.getByRole('dialog', { name })
+
+/** Knopf in der Rückfrage drücken und warten, bis sie weg ist. */
+async function antworten(dialog, knopf) {
+	await dialog.getByRole('button', { name: knopf, exact: true }).click()
+	await dialog.waitFor({ state: 'detached' })
+}
+
+/**
+ * Ob der Locator das fokussierte Element ist. Wartet bis zu 3 Sekunden: Nach einer Rückfrage setzt die Seite den
+ * Fokus erst, wenn der Dialog geschlossen ist.
+ */
+const hatFokus = (locator) => locator.evaluate((e) => new Promise((ja) => {
+	const start = Date.now()
+	const pruefen = () => {
+		if (e === document.activeElement) {
+			ja(true)
+		} else if (Date.now() - start > 3000) {
+			ja(false)
+		} else {
+			requestAnimationFrame(pruefen)
+		}
+	}
+	pruefen()
+}))
+
+/** Wartet auf das PUT /schema der Oberfläche und liefert dessen Schema. */
+async function speichernMitAnfrage(bereich) {
+	const anfrage = seite.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/api/schema'))
+	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
+	return JSON.parse((await anfrage).postData()).schema
+}
 
 async function anmelden(tab, nutzer, passwort) {
 	await tab.goto(BASIS + '/login')
@@ -84,13 +121,13 @@ test('Admin-Seite zeigt Vorgaben und Felder, ein neues Auswahlfeld lässt sich s
 	await bereich.getByLabel('Typ Feld 2 in Abschnitt 5').selectOption('select')
 	await bereich.locator('textarea').last().fill('Kurs\nOffene Werkstatt')
 	// Vier Listenfelder wären zu viele: der Server lehnt ab, das Schema bleibt.
-	await bereich.getByLabel('In der Liste: Art der Veranstaltung').check()
+	await bereich.getByLabel('Liste Feld 2 in Abschnitt 5 („Art der Veranstaltung“)').check()
 	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
 	await bereich.getByText('Höchstens 3 Felder dürfen in der Liste stehen').waitFor()
 	const unveraendert = (await (await admin.get(`${API}/schema`)).json()).schema
 	assert.deepEqual(unveraendert, vorgabe)
 
-	await bereich.getByLabel('In der Liste: Zuständig intern').uncheck()
+	await bereich.getByLabel('Liste Feld 1 in Abschnitt 1 („Zuständig intern“)').uncheck()
 	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
 	await bereich.getByText('Felder gespeichert.').waitFor()
 	const gespeichert = (await (await admin.get(`${API}/schema`)).json()).schema
@@ -130,14 +167,22 @@ test('Vorlage „Makerspace“ laden: das Formular zeigt die alten Bezeichnungen
 	await seite.goto(BASIS + ADMIN_SEITE)
 	const bereich = seite.locator('#calendar-planning-admin')
 	await bereich.getByRole('heading', { name: 'Kalender-Planung' }).waitFor()
-	await bereich.getByRole('button', { name: /Vorlage laden: Makerspace/ }).click()
+	const ausloeser = bereich.getByRole('button', { name: /Vorlage laden: Makerspace/ })
+	await ausloeser.click()
+	// Rückfrage als Dialog von Nextcloud mit Knöpfen, die die Aktion nennen; danach Fokus zurück zum Auslöser.
+	await antworten(rueckfrage(/^Makerspace.* laden\?$/), 'Vorlage laden')
 	await bereich.getByText(/geladen, noch nicht gespeichert/).waitFor()
+	assert.equal(await hatFokus(ausloeser), true)
+	// Die Meldung steht in einem dauerhaften Live-Bereich.
+	assert.equal(await bereich.getByText(/geladen, noch nicht gespeichert/).locator('xpath=ancestor::*[@aria-live="polite"]').count(), 1)
 	dialoge.length = 0
 	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
-	await bereich.getByText('Felder gespeichert.').waitFor()
 	// Die Vorlage hat „ausstattung“ nicht: Rückfrage vor dem Speichern, Hinweis danach (Q-KAL-01).
-	assert.equal(dialoge.length, 1)
-	assert.match(dialoge[0].text, /„Benötigte Ausstattung \/ Technik“ \(ausstattung\)/)
+	const frage = rueckfrage(/(Feld fällt|Felder fallen) weg/)
+	await frage.getByText(/„Benötigte Ausstattung \/ Technik“ \(ausstattung\)/).waitFor()
+	await antworten(frage, 'Trotzdem speichern')
+	await bereich.getByText('Felder gespeichert.').waitFor()
+	assert.deepEqual(dialoge, [], 'keine Dialoge des Browsers')
 	await bereich.getByText(/Nicht mehr im Formular: .*„Benötigte Ausstattung \/ Technik“ \(ausstattung\).*; erfasste Werte bleiben im Termin/).waitFor()
 
 	await seite.goto(BASIS + '/index.php/apps/calendar_planning/')
@@ -175,25 +220,36 @@ async function adminSeite() {
 
 const gespeichertesSchema = async () => (await (await admin.get(`${API}/schema`)).json()).schema
 
-test('Q-KAL-01: Bezeichnung eines gespeicherten Feldes ändern lässt den Schlüssel stehen', async () => {
+test('Q-KAL-01: Bezeichnung eines gespeicherten Feldes ändern lässt den Schlüssel stehen, auch nach Entfernen und Rückgängig', async () => {
 	const bereich = await adminSeite()
+	// Gespeichertes Feld entfernen und zurückholen: Es bleibt ein gespeichertes Feld mit festem Schlüssel.
+	await bereich.getByRole('button', { name: 'Feld 1 in Abschnitt 1 („Zuständig intern“) entfernen' }).click()
+	await bereich.getByRole('button', { name: 'Rückgängig' }).click()
 	const schluessel = bereich.getByLabel('Schlüssel Feld 1 in Abschnitt 1')
 	assert.equal(await schluessel.inputValue(), 'zustaendig')
 	assert.equal(await schluessel.getAttribute('readonly'), '')
 	await bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1').press('End')
 	await bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1').pressSequentially(' (Person)')
 	assert.equal(await schluessel.inputValue(), 'zustaendig')
-	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
+	// Abschnitt verschieben ändert keine Schlüssel.
+	await bereich.getByRole('button', { name: 'Abschnitt 2 („2. Kontaktdaten“) nach unten' }).click()
+	const gesendet = await speichernMitAnfrage(bereich)
 	await bereich.getByText('Felder gespeichert.').waitFor()
 	assert.equal(dialoge.length, 0, 'kein Feld fällt weg, also keine Rückfrage')
+	assert.equal(await seite.getByRole('dialog').count(), 0)
+	assert.doesNotMatch(JSON.stringify(gesendet), /_neu|_manuell/)
 	const schema = await gespeichertesSchema()
 	assert.deepEqual(schema.abschnitte[0].felder[0], { ...vorgabe.abschnitte[0].felder[0], label: 'Zuständig intern (Person)' })
-	assert.doesNotMatch(JSON.stringify(schema), /_neu|_manuell/)
+	assert.deepEqual(schema.abschnitte.map((a) => a.titel), ['1. Grunddaten', '3. Teilnehmende Gruppe', '2. Kontaktdaten', '4. Inhalte & Ausstattung', '5. Hinweise'])
+	assert.deepEqual(schema.abschnitte[2].felder, vorgabe.abschnitte[1].felder)
+	const schluesselVon = (s) => s.abschnitte.flatMap((a) => a.felder.map((f) => f.key)).sort()
+	assert.deepEqual(schluesselVon(schema), schluesselVon(vorgabe))
 })
 
 test('Q-KAL-01: Vorlage laden, Schlüssel der Vorlage bleiben beim Umbenennen', async () => {
 	const bereich = await adminSeite()
 	await bereich.getByRole('button', { name: /Vorlage laden: Makerspace/ }).click()
+	await antworten(rueckfrage(/^Makerspace.* laden\?$/), 'Vorlage laden')
 	await bereich.getByText(/geladen, noch nicht gespeichert/).waitFor()
 	// „Benötigte Maschinen / Tools“ ist Feld 2 in Abschnitt 4 der Vorlage.
 	const bezeichnung = bereich.getByLabel('Bezeichnung Feld 2 in Abschnitt 4')
@@ -215,7 +271,16 @@ test('Q-KAL-01: neues Feld, Schlüssel folgt der Bezeichnung und ist bearbeitbar
 	const schluessel = bereich.getByLabel('Schlüssel Feld 2 in Abschnitt 5')
 	assert.equal(await schluessel.inputValue(), 'raum_nummer')
 	assert.equal(await schluessel.getAttribute('readonly'), null)
-	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
+	// Von Hand geändert (_manuell): folgt der Bezeichnung nicht mehr.
+	await schluessel.fill('raum_nr')
+	await bezeichnung.press('End')
+	await bezeichnung.pressSequentially('n')
+	assert.equal(await schluessel.inputValue(), 'raum_nr')
+	await schluessel.fill('raum_nummer')
+	// Die Hilfsangaben des Editors gehen nicht an den Server.
+	const gesendet = await speichernMitAnfrage(bereich)
+	assert.deepEqual(gesendet.abschnitte[4].felder[1], { key: 'raum_nummer', label: 'Raum Nummern', typ: 'text', pflicht: false, maxlen: 5000, optionen: [], inListe: false })
+	assert.doesNotMatch(JSON.stringify(gesendet), /_neu|_manuell/)
 	await bereich.getByText('Felder gespeichert.').waitFor()
 	assert.equal((await gespeichertesSchema()).abschnitte[4].felder[1].key, 'raum_nummer')
 	// Nach dem Speichern ist auch dieses Feld fest.
@@ -229,11 +294,13 @@ test('Q-KAL-02: Optionen lassen sich mit Enter und Leerzeichen tippen', async ()
 	await bereich.getByRole('button', { name: '+ Feld in Abschnitt 5' }).click()
 	await bereich.getByLabel('Bezeichnung Feld 2 in Abschnitt 5').pressSequentially('Art')
 	await bereich.getByLabel('Typ Feld 2 in Abschnitt 5').selectOption('select')
-	const optionen = bereich.getByLabel('Optionen von „Art“ (eine je Zeile)')
+	const optionen = bereich.getByLabel('Optionen für Feld 2 in Abschnitt 5 („Art“), eine je Zeile')
 	await optionen.pressSequentially('Option A')
 	await optionen.press('Enter')
+	// Leerzeile in der Mitte: bleibt beim Tippen stehen, gespeichert wird sie nicht.
+	await optionen.press('Enter')
 	await optionen.pressSequentially('Option B ')
-	assert.equal(await optionen.inputValue(), 'Option A\nOption B ')
+	assert.equal(await optionen.inputValue(), 'Option A\n\nOption B ')
 	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
 	await bereich.getByText('Felder gespeichert.').waitFor()
 	assert.deepEqual((await gespeichertesSchema()).abschnitte[4].felder[1].optionen, ['Option A', 'Option B'])
@@ -244,20 +311,21 @@ test('U-KAL-10: ungespeicherte Änderungen zeigen einen Hinweis, Verlassen fragt
 	const bereich = await adminSeite()
 	const hinweis = bereich.getByText('Ungespeicherte Änderungen an den Feldern.')
 	assert.equal(await hinweis.count(), 0)
-	await bereich.getByLabel('Pflichtfeld Zuständig intern').check()
+	await bereich.getByLabel('Pflicht Feld 1 in Abschnitt 1 („Zuständig intern“)').check()
 	await hinweis.waitFor()
 	// Zurücknehmen der Änderung nimmt auch den Hinweis weg.
-	await bereich.getByLabel('Pflichtfeld Zuständig intern').uncheck()
+	await bereich.getByLabel('Pflicht Feld 1 in Abschnitt 1 („Zuständig intern“)').uncheck()
 	await hinweis.waitFor({ state: 'detached' })
-	await bereich.getByLabel('Pflichtfeld Zuständig intern').check()
+	await bereich.getByLabel('Pflicht Feld 1 in Abschnitt 1 („Zuständig intern“)').check()
 	await hinweis.waitFor()
 
 	// Verlassen: der Browser fragt nach (beforeunload); „Bleiben“ lässt Seite und Eingaben stehen.
 	dialogAnnehmen = false
+	const verlassen = seite.waitForEvent('dialog')
 	await seite.evaluate(() => { window.location.href = '/index.php/apps/dashboard/' }).catch(() => {})
-	await seite.waitForTimeout(500)
+	await verlassen
 	assert.deepEqual(dialoge.map((d) => d.typ), ['beforeunload'])
-	assert.equal(await bereich.getByLabel('Pflichtfeld Zuständig intern').isChecked(), true)
+	assert.equal(await bereich.getByLabel('Pflicht Feld 1 in Abschnitt 1 („Zuständig intern“)').isChecked(), true)
 	dialogAnnehmen = true
 
 	// Vorgaben haben ihren eigenen Hinweis.
@@ -275,7 +343,7 @@ test('U-KAL-10: ungespeicherte Änderungen zeigen einen Hinweis, Verlassen fragt
 	assert.deepEqual(dialoge, [])
 })
 
-for (const breite of [1280, 860, 600]) {
+for (const breite of [1280, 860, 600, 320]) {
 	test(`U-KAL-18: Feld-Editor bei ${breite} Pixel ohne seitliches Scrollen`, async () => {
 		const bereich = await adminSeite()
 		await seite.setViewportSize({ width: breite, height: 900 })
@@ -304,6 +372,17 @@ for (const breite of [1280, 860, 600]) {
 			const schluessel = bereich.getByLabel('Schlüssel Feld 1 in Abschnitt 1')
 			const bezeichnung = bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1')
 			assert.ok((await bezeichnung.boundingBox()).width >= (await schluessel.boundingBox()).width, 'Bezeichnung über die ganze Breite')
+			// Echte, sichtbare Beschriftungen; ein Klick auf „Pflicht“ schaltet das Kästchen.
+			const zeile = bereich.locator('tr.editor__zeile').first()
+			assert.equal(await zeile.locator('label', { hasText: /^Max\. Zeichen/ }).isVisible(), true)
+			const pflicht = bereich.getByLabel('Pflicht Feld 1 in Abschnitt 1')
+			assert.equal(await pflicht.isChecked(), false)
+			await zeile.locator('label', { hasText: /^Pflicht/ }).click()
+			assert.equal(await pflicht.isChecked(), true)
+		} else {
+			// Breit: die Beschriftung steht im Spaltenkopf, die je Feld nur für Screenreader.
+			const box = await bereich.locator('tr.editor__zeile').first().locator('label', { hasText: /^Pflicht/ }).boundingBox()
+			assert.ok(box.width <= 1 && box.height <= 1, `Beschriftung sichtbar: ${JSON.stringify(box)}`)
 		}
 	})
 }
@@ -326,37 +405,108 @@ test('U-KAL-19: Fehlermeldungen nennen Feld und Abschnitt ab 1 mit Bezeichnung',
 test('U-KAL-20: Feld entfernen mit Rückgängig, Fokus und Ansage beim Verschieben und Entfernen', async () => {
 	const bereich = await adminSeite()
 	const ansage = bereich.locator('[role=status]').last()
+	const fokusLabel = () => seite.evaluate(() => document.activeElement.getAttribute('aria-label'))
 
-	// Verschieben: der Fokus bleibt am verschobenen Feld.
-	await bereich.getByRole('button', { name: 'Feld Zuständig intern nach unten' }).click()
+	// Verschieben: der Fokus bleibt am verschobenen Feld; die Namen nennen Feld, Abschnitt und Bezeichnung.
+	await bereich.getByRole('button', { name: 'Feld 1 in Abschnitt 1 („Zuständig intern“) nach unten' }).click()
 	assert.equal(await bereich.getByLabel('Bezeichnung Feld 2 in Abschnitt 1').inputValue(), 'Zuständig intern')
-	assert.equal(await seite.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Feld Zuständig intern nach unten')
+	assert.equal(await fokusLabel(), 'Feld 2 in Abschnitt 1 („Zuständig intern“) nach unten')
 	await seite.waitForFunction(() => document.querySelector('#calendar-planning-admin .editor [role=status]').textContent.includes('jetzt Feld 2 von 3'))
 	assert.match(await ansage.textContent(), /Feld „Zuständig intern“ ist jetzt Feld 2 von 3 in Abschnitt 1\./)
 	// Am Rand: der Knopf in Richtung ist gesperrt, der Fokus geht auf den Gegenknopf.
 	await seite.keyboard.press('Enter')
 	assert.equal(await bereich.getByLabel('Bezeichnung Feld 3 in Abschnitt 1').inputValue(), 'Zuständig intern')
-	assert.equal(await seite.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Feld Zuständig intern nach oben')
+	assert.equal(await fokusLabel(), 'Feld 3 in Abschnitt 1 („Zuständig intern“) nach oben')
 
-	// Entfernen: Hinweis mit „Rückgängig“, Fokus auf das nachrückende Feld.
-	await bereich.getByRole('button', { name: 'Feld Parkmöglichkeiten / Zufahrt / Anlieferung entfernen' }).click()
+	// Entfernen: Hinweis mit „Rückgängig“, Fokus auf die Bezeichnung des nachrückenden Feldes.
+	await bereich.getByRole('button', { name: 'Feld 1 in Abschnitt 1 („Parkmöglichkeiten / Zufahrt / Anlieferung“) entfernen' }).click()
 	await bereich.getByText('Feld „Parkmöglichkeiten / Zufahrt / Anlieferung“ entfernt.').waitFor()
-	assert.equal(await seite.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Feld Raum-Informationen entfernen')
+	assert.equal(await bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1').inputValue(), 'Raum-Informationen')
+	assert.equal(await hatFokus(bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1')), true)
 	assert.match(await ansage.textContent(), /entfernt\. „Rückgängig“ holt es zurück\./)
 	await bereich.getByRole('button', { name: 'Rückgängig' }).click()
 	assert.equal(await bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1').inputValue(), 'Parkmöglichkeiten / Zufahrt / Anlieferung')
 	assert.equal(await bereich.getByLabel('Schlüssel Feld 1 in Abschnitt 1').inputValue(), 'zufahrt')
-	assert.equal(await seite.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Bezeichnung Feld 1 in Abschnitt 1')
+	assert.equal(await hatFokus(bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1')), true)
 	assert.equal(await bereich.getByRole('button', { name: 'Rückgängig' }).count(), 0)
 
-	// Letztes Feld eines Abschnitts entfernen: Fokus auf „+ Feld“; Speichern fragt nach, weil ein Schlüssel wegfällt.
-	await bereich.getByRole('button', { name: 'Feld Besondere Wünsche / Hinweise / Anmerkungen entfernen' }).click()
-	assert.match(await seite.evaluate(() => document.activeElement.textContent), /\+ Feld in Abschnitt 5/)
-	dialogAnnehmen = false
-	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
-	assert.equal(dialoge.length, 1)
-	assert.match(dialoge[0].text, /„Besondere Wünsche \/ Hinweise \/ Anmerkungen“ \(hinweise\)/)
+	// Letztes Feld eines Abschnitts entfernen: Fokus auf „Rückgängig“; Speichern fragt nach, weil ein Schlüssel wegfällt.
+	await bereich.getByRole('button', { name: 'Feld 1 in Abschnitt 5 („Besondere Wünsche / Hinweise / Anmerkungen“) entfernen' }).click()
+	assert.equal(await hatFokus(bereich.getByRole('button', { name: 'Rückgängig' })), true)
+	const speichern = bereich.getByRole('button', { name: 'Felder speichern' })
+	await speichern.click()
+	const frage = rueckfrage('Ein Feld fällt weg')
+	await frage.getByText(/„Besondere Wünsche \/ Hinweise \/ Anmerkungen“ \(hinweise\)/).waitFor()
+	await antworten(frage, 'Weiter bearbeiten')
+	assert.equal(await hatFokus(speichern), true, 'Fokus zurück auf „Felder speichern“')
 	assert.deepEqual(await gespeichertesSchema(), vorgabe, 'abgelehnte Rückfrage speichert nicht')
-	dialogAnnehmen = true
+	assert.deepEqual(dialoge, [])
 	assert.equal(await seite.locator('body').innerText().then((t) => /\bnull\b|undefined/.test(t)), false)
+})
+
+test('U-KAL-20: mehrfach Rückgängig in umgekehrter Reihenfolge, danach nichts mehr ungespeichert', async () => {
+	const bereich = await adminSeite()
+	const bezeichnung = (n) => bereich.getByLabel(`Bezeichnung Feld ${n} in Abschnitt 2`)
+	await bereich.getByRole('button', { name: 'Feld 2 in Abschnitt 2 („Name“) entfernen' }).click()
+	assert.equal(await hatFokus(bezeichnung(2)), true)
+	assert.equal(await bezeichnung(2).inputValue(), 'Telefon')
+	await bereich.getByRole('button', { name: 'Feld 2 in Abschnitt 2 („Telefon“) entfernen' }).click()
+	assert.equal(await bezeichnung(2).inputValue(), 'E-Mail')
+	await bereich.getByText('Feld „Telefon“ entfernt.').waitFor()
+	await bereich.getByText(/nacheinander 2 entfernte Felder zurück/).waitFor()
+	await bereich.getByText('Ungespeicherte Änderungen an den Feldern.').waitFor()
+
+	await bereich.getByRole('button', { name: 'Rückgängig' }).click()
+	assert.equal(await bezeichnung(2).inputValue(), 'Telefon')
+	assert.equal(await hatFokus(bezeichnung(2)), true)
+	await bereich.getByText('Feld „Name“ entfernt.').waitFor()
+	await bereich.getByRole('button', { name: 'Rückgängig' }).click()
+	const reihe = []
+	for (let n = 1; n <= 5; n++) {
+		reihe.push(await bezeichnung(n).inputValue())
+	}
+	assert.deepEqual(reihe, vorgabe.abschnitte[1].felder.map((f) => f.label))
+	assert.equal(await bereich.getByRole('button', { name: 'Rückgängig' }).count(), 0)
+	// Alles zurück: kein Hinweis, keine Rückfrage beim Verlassen.
+	await bereich.getByText('Ungespeicherte Änderungen an den Feldern.').waitFor({ state: 'detached' })
+	dialoge.length = 0
+	await seite.goto(BASIS + '/index.php/apps/dashboard/')
+	assert.deepEqual(dialoge, [])
+})
+
+test('Abschnitt entfernen fragt nach, Fokus danach auf den nächsten Abschnitt oder „+ Abschnitt“', async () => {
+	const bereich = await adminSeite()
+	const titel = (n) => bereich.getByLabel(`Abschnitt ${n}`, { exact: true })
+	const entfernen = (n, name) => bereich.getByRole('button', { name: `Abschnitt ${n} („${name}“) entfernen` })
+
+	// „Behalten“: nichts passiert, Fokus zurück auf den Knopf.
+	await entfernen(2, '2. Kontaktdaten').click()
+	await antworten(rueckfrage('Abschnitt 2 („2. Kontaktdaten“) entfernen?'), 'Behalten')
+	assert.equal(await titel(2).inputValue(), '2. Kontaktdaten')
+	assert.equal(await hatFokus(entfernen(2, '2. Kontaktdaten')), true)
+
+	// Entfernen: der nächste Abschnitt rückt nach, der Fokus steht in seiner Überschrift.
+	await entfernen(2, '2. Kontaktdaten').click()
+	const frage = rueckfrage('Abschnitt 2 („2. Kontaktdaten“) entfernen?')
+	await frage.getByText('Der Abschnitt enthält 5 Felder; sie werden mit entfernt.').waitFor()
+	await antworten(frage, 'Abschnitt entfernen')
+	assert.equal(await titel(2).inputValue(), '3. Teilnehmende Gruppe')
+	assert.equal(await hatFokus(titel(2)), true)
+	await seite.waitForFunction(() => document.querySelector('#calendar-planning-admin .editor [role=status]').textContent.includes('entfernt'))
+
+	// Letzter Abschnitt: Fokus auf „+ Abschnitt“.
+	await entfernen(4, '5. Hinweise').click()
+	await antworten(rueckfrage('Abschnitt 4 („5. Hinweise“) entfernen?'), 'Abschnitt entfernen')
+	const neu = bereich.getByRole('button', { name: '+ Abschnitt' })
+	assert.equal(await hatFokus(neu), true)
+
+	// Neuer Abschnitt: Fokus in seiner Überschrift; leer entfernen geht ohne Rückfrage.
+	await neu.click()
+	assert.equal(await titel(4).inputValue(), '4. Abschnitt')
+	assert.equal(await hatFokus(titel(4)), true)
+	await entfernen(4, '4. Abschnitt').click()
+	assert.equal(await seite.getByRole('dialog').count(), 0)
+	assert.equal(await titel(4).count(), 0)
+	assert.equal(await hatFokus(neu), true)
+	assert.deepEqual(dialoge, [])
 })

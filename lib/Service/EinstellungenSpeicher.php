@@ -15,7 +15,11 @@ use Psr\Log\LoggerInterface;
  *   occ config:app:set calendar_planning ort_vorgabe --value "Vereinsheim"
  *   occ config:app:set calendar_planning kalender_muster --value "Planung"
  *   occ config:app:set calendar_planning link_text --value "Planung öffnen:"
- *   occ config:app:set calendar_planning schema --value "$(cat schema/vorgabe.json)"
+ *   occ config:app:set calendar_planning schema --lazy --value "$(cat schema/vorgabe.json)"
+ *
+ * Das Schema (bis 64 KiB) steht als „lazy“ in der App-Konfiguration: Nextcloud lädt es nicht bei jeder Anfrage aller
+ * Apps mit, sondern erst, wenn diese App es liest. Ältere, nicht-lazy gespeicherte Werte liest IAppConfig mit
+ * `lazy: true` ebenso (in Nextcloud 34 und 35 geprüft); beim nächsten Speichern setzt Nextcloud das Kennzeichen um.
  */
 class EinstellungenSpeicher {
 	/** Mitgelieferte Schemata zum Laden auf der Admin-Seite: Kennung => Datei. */
@@ -78,7 +82,7 @@ class EinstellungenSpeicher {
 		}
 		// Gegenprobe: genau so, wie es beim nächsten Laden gelesen wird.
 		Schema::ausJson($json);
-		$this->appConfig->setValueString(Application::APP_ID, Einstellungen::SCHLUESSEL_SCHEMA, $json);
+		$this->appConfig->setValueString(Application::APP_ID, Einstellungen::SCHLUESSEL_SCHEMA, $json, lazy: true);
 		return $schema;
 	}
 
@@ -103,7 +107,7 @@ class EinstellungenSpeicher {
 	}
 
 	private function schemaLaden(): Schema {
-		$json = $this->wert(Einstellungen::SCHLUESSEL_SCHEMA, '');
+		$json = $this->appConfig->getValueString(Application::APP_ID, Einstellungen::SCHLUESSEL_SCHEMA, '', lazy: true);
 		if ($json === '') {
 			return Schema::vorgabe();
 		}

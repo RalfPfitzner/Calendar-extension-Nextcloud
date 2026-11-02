@@ -18,3 +18,5 @@ spl_autoload_register(static function (string $klasse): void {
 		}
 	}
 });
+
+require __DIR__ . '/stubs/dav.php';
