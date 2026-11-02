@@ -1,8 +1,8 @@
 # Plan: alle Review-Befunde der Kalender-Planung
 
 Stand 02.11.2026, `main` 9b91ec5 (Version 1.0.0 plus #19). Grundlage ist der Prüfbericht vom 29.10.2026. Offen sind
-**alle 45 Befunde**: 8 „hoch“ (Plan mit Einzelschritten: `2026-10-29-review-hoch.md`, noch nicht umgesetzt), 16
-„mittel“ und 21 „niedrig“. Maßstab sind `docs/STANDARDS.md` im Repo `ralfpfitzner/test` (Teile B bis I, E2).
+**alle 46 Befunde**: 8 „hoch“ (Plan mit Einzelschritten: `2026-10-29-review-hoch.md`, noch nicht umgesetzt), 16
+„mittel“ und 22 „niedrig“. Maßstab sind `docs/STANDARDS.md` im Repo `ralfpfitzner/test` (Teile B bis I, E2).
 
 ## Pull Requests und Freigabe
 
@@ -12,7 +12,7 @@ Jeder PR wird vor dem Start einzeln freigegeben. Die Pakete eines PR berühren v
 |---|---|---|---|
 | 1 | A Server und Datenformat, D Admin, E CI und Release | 16 | Q-KAL-01, -02, -03 |
 | 2 | C Formular und App-Rahmen | 13 | U-KAL-01, -03, -04 |
-| 3 | B Liste und Performance | 16 | P-KAL-01, U-KAL-02 |
+| 3 | B Liste und Performance | 17 | P-KAL-01, U-KAL-02 |
 | 4 | Release 1.1.0 | – | – |
 
 PR 1 zuerst, weil er die Fehler mit Datenverlust behebt (Schlüssel, Optionen, Beschreibung). PR 2 und PR 3 sind
