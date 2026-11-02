@@ -26,10 +26,9 @@
 					Diesen Kalender darfst du nur lesen.
 				</NcNoteCard>
 				<template v-for="gruppe in leseGruppen" :key="gruppe.titel">
-					<h3 :id="'lesen-' + gruppe.nummer">
-						{{ gruppe.titel }}
-					</h3>
-					<dl class="formular__lesen" tabindex="0" :aria-labelledby="'lesen-' + gruppe.nummer">
+					<!-- Die Überschriften gliedern die Werte; die Liste selbst ist nicht fokussierbar (Lesen mit den Lesetasten). -->
+					<h3>{{ gruppe.titel }}</h3>
+					<dl class="formular__lesen">
 						<div v-for="eintrag in gruppe.eintraege" :key="eintrag.label" class="formular__eintrag">
 							<dt>{{ eintrag.label }}</dt>
 							<dd :class="{ 'formular__leer': eintrag.leer }">
@@ -52,7 +51,7 @@
 						label-outside
 						required
 						:maxlength="MAX_LAENGE"
-						v-bind="fehlerAttribute('titel')" />
+						v-bind="ncFehler('titel')" />
 				</div>
 
 				<!-- Ort (U-KAL-01): fieldset mit legend, Knöpfe direkt bei ihrer Beschriftung, Pfeiltasten wechseln. -->
@@ -74,7 +73,7 @@
 							resize="vertical"
 							required
 							:maxlength="MAX_LAENGE"
-							v-bind="fehlerAttribute('ort')" />
+							v-bind="ncFehler('ort')" />
 					</div>
 				</template>
 				<div v-else class="formular__feld">
@@ -85,7 +84,7 @@
 						rows="2"
 						resize="vertical"
 						:maxlength="MAX_LAENGE"
-						v-bind="fehlerAttribute('ort')" />
+						v-bind="ncFehler('ort')" />
 				</div>
 
 				<template v-for="abschnitt in schema.abschnitte" :key="abschnitt.titel">
@@ -95,7 +94,7 @@
 							<NcCheckboxRadioSwitch :id="'feld-' + feld.key"
 								v-model="werte[feld.key]"
 								:required="feld.pflicht"
-								v-bind="fehlerAttribute(feld.key)">
+								v-bind="ncFehler(feld.key)">
 								{{ feld.label }}{{ feld.pflicht ? ' *' : '' }}
 							</NcCheckboxRadioSwitch>
 						</div>
@@ -109,18 +108,21 @@
 								resize="vertical"
 								:required="feld.pflicht"
 								:maxlength="feld.maxlen"
-								v-bind="fehlerAttribute(feld.key)" />
-							<NcSelect v-else-if="feld.typ === 'select'"
-								:input-id="'feld-' + feld.key"
-								label-outside
-								:model-value="auswahlWert(feld)"
-								:options="auswahlOptionen(feld)"
+								v-bind="ncFehler(feld.key)" />
+							<!-- Natives select (U-KAL-17): klein, auf Handys die Auswahl des Systems, ARIA direkt am Feld. -->
+							<select v-else-if="feld.typ === 'select'"
+								:id="'feld-' + feld.key"
+								v-model="werte[feld.key]"
+								class="formular__auswahl"
 								:required="feld.pflicht"
-								:clearable="!feld.pflicht"
-								:aria-label-clear-selected="'Auswahl leeren: ' + feld.label"
-								:error="fehlerFeld === feld.key"
-								placeholder="nicht gewählt"
-								@update:model-value="(option) => { werte[feld.key] = option?.id ?? '' }" />
+								v-bind="fehlerAttribute(feld.key)">
+								<option v-if="!feld.pflicht || werte[feld.key] === ''" value="" :disabled="feld.pflicht">
+									– bitte wählen –
+								</option>
+								<option v-for="option in auswahlOptionen(feld)" :key="option.id" :value="option.id">
+									{{ option.label }}
+								</option>
+							</select>
 							<NcTextField v-else
 								:id="'feld-' + feld.key"
 								v-model="werte[feld.key]"
@@ -129,26 +131,23 @@
 								:inputmode="feld.typ === 'number' ? 'decimal' : undefined"
 								:required="feld.pflicht"
 								:maxlength="feld.maxlen"
-								v-bind="fehlerAttribute(feld.key)" />
+								v-bind="ncFehler(feld.key)" />
 						</div>
 					</template>
 				</template>
 
 				<div class="formular__aktionen">
-					<!-- Dauerhafte Live-Regionen (U-KAL-03): leer im DOM, damit Ansagen sicher ankommen. -->
+					<!-- Dauerhafte Live-Regionen (U-KAL-03): leer im DOM, damit Ansagen sicher ankommen. Sie allein sagen an;
+						der Fokus bleibt beim Knopf, sonst käme die Meldung doppelt. -->
 					<p id="formular-erfolg"
-						ref="erfolgElement"
 						class="formular__meldung formular__meldung--erfolg"
 						role="status"
-						aria-live="polite"
-						tabindex="-1">
+						aria-live="polite">
 						{{ meldung }}
 					</p>
 					<p id="formular-fehler"
-						ref="fehlerElement"
 						class="formular__meldung formular__meldung--fehler"
-						role="alert"
-						tabindex="-1">
+						role="alert">
 						{{ fehler }}
 					</p>
 					<!-- Konflikt (U-KAL-05): Eingaben bleiben, zwei Wege mit Rückfrage. -->
@@ -176,9 +175,12 @@
 						</div>
 					</div>
 					<div class="formular__knoepfe">
-						<NcButton type="submit"
+						<!-- aria-disabled statt disabled: Nach dem Speichern bleibt der Fokus hier und fällt nicht auf BODY. -->
+						<NcButton ref="speicherKnopf"
+							type="submit"
 							variant="primary"
-							:disabled="!geaendert && !speichert"
+							:class="{ 'formular__gesperrt': !geaendert && !speichert }"
+							:aria-disabled="!geaendert && !speichert ? 'true' : 'false'"
 							:aria-busy="speichert ? 'true' : 'false'">
 							{{ speichert ? 'Speichert …' : 'Speichern' }}
 						</NcButton>
@@ -200,12 +202,11 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwit
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRadioGroup from '@nextcloud/vue/components/NcRadioGroup'
-import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import Rueckfrage from './Rueckfrage.vue'
 import { MAX_LAENGE, alleFelder, feldnamen, leererWert } from '../felder.js'
-import { terminLaden, terminSpeichern } from '../api.js'
+import { fehlertext, terminLaden, terminSpeichern } from '../api.js'
 import { zeitraumText } from '../datum.js'
 
 const props = defineProps({
@@ -233,8 +234,7 @@ const meldung = ref('')
 const speichert = ref(false)
 /** Bei 409: {geladen, unterschiede: [{label, wert}]} */
 const konflikt = ref(null)
-const erfolgElement = ref(null)
-const fehlerElement = ref(null)
+const speicherKnopf = ref(null)
 const rueckfrage = ref(null)
 
 /** Formularwerte zu einem Stand des Termins; beim Standardort bleibt das Adressfeld leer. */
@@ -302,10 +302,6 @@ function auswahlOptionen(feld) {
 	return optionen
 }
 
-function auswahlWert(feld) {
-	return auswahlOptionen(feld).find((option) => option.id === werte[feld.key]) ?? null
-}
-
 /** Anzeige eines Wertes in der Nur-Lesen-Ansicht. */
 function anzeige(feld, wert) {
 	if (feld.typ === 'checkbox') {
@@ -323,9 +319,8 @@ const leseGruppen = computed(() => {
 	}
 	const eintrag = (label, wert) => ({ label, wert: wert === '' ? 'keine Angabe' : wert, leer: wert === '' })
 	return [
-		{ nummer: 0, titel: 'Termin', eintraege: [eintrag('Titel der Veranstaltung', termin.value.titel ?? ''), eintrag('Ort', termin.value.ort ?? '')] },
-		...schema.value.abschnitte.map((abschnitt, i) => ({
-			nummer: i + 1,
+		{ titel: 'Termin', eintraege: [eintrag('Titel der Veranstaltung', termin.value.titel ?? ''), eintrag('Ort', termin.value.ort ?? '')] },
+		...schema.value.abschnitte.map((abschnitt) => ({
 			titel: abschnitt.titel,
 			eintraege: abschnitt.felder.map((feld) => eintrag(feld.label, anzeige(feld, termin.value[feld.key]))),
 		})),
@@ -335,23 +330,13 @@ const leseGruppen = computed(() => {
 /** aria-invalid und Verweis auf die Fehlermeldung für das Feld, auf das sich der Fehler bezieht. */
 function fehlerAttribute(name) {
 	return fehlerFeld.value === name
-		? { error: true, 'aria-invalid': 'true', 'aria-describedby': 'formular-fehler' }
+		? { 'aria-invalid': 'true', 'aria-describedby': 'formular-fehler' }
 		: {}
 }
 
-/**
- * Meldung zu einem Fehler aus api.js: `ApiFehler` (status, message, daten) bringt eine verständliche `message` mit;
- * ältere Axios-Fehler den Text des Servers in `response.data.fehler`; sonst eine allgemeine Meldung.
- */
-function fehlerMeldung(e) {
-	if (typeof e?.status === 'number' && !e?.isAxiosError && e?.message) {
-		return e.message
-	}
-	const vomServer = e?.response?.data?.fehler
-	if (typeof vomServer === 'string' && vomServer !== '') {
-		return vomServer
-	}
-	return 'Verbindung zur Nextcloud fehlgeschlagen. Bitte später erneut versuchen.'
+/** Wie fehlerAttribute, dazu `error` für die Rahmenfarbe der Nextcloud-Felder. */
+function ncFehler(name) {
+	return fehlerFeld.value === name ? { ...fehlerAttribute(name), error: true } : {}
 }
 
 function fehlerStatus(e) {
@@ -375,6 +360,19 @@ async function fokus(element) {
 	element?.focus?.()
 }
 
+/**
+ * Ist der Fokus verloren gegangen (der Knopf, der ihn hatte, ist verschwunden oder gesperrt), auf den Speichern-Knopf
+ * setzen, nie auf BODY lassen. Sonst bleibt er, wo er ist; die Meldung sagt die Live-Region an.
+ */
+async function fokusHalten() {
+	await nextTick()
+	const aktiv = document.activeElement
+	// Ein gesperrter Knopf verliert den Fokus erst beim nächsten Zeichnen; deshalb auch ihn als verloren werten.
+	if (!aktiv || aktiv === document.body || !aktiv.isConnected || aktiv.matches(':disabled')) {
+		speicherKnopf.value?.$el?.focus?.()
+	}
+}
+
 // App.vue warnt ebenfalls beim Verlassen; doppelt schadet nicht, und das Formular bleibt für sich sicher.
 function warnen(ereignis) {
 	if (geaendert.value) {
@@ -387,7 +385,7 @@ onMounted(async () => {
 	try {
 		uebernehmen(await terminLaden(props.kalender, props.termin))
 	} catch (e) {
-		ladeFehler.value = fehlerMeldung(e)
+		ladeFehler.value = fehlertext(e)
 	}
 })
 onBeforeUnmount(() => window.removeEventListener('beforeunload', warnen))
@@ -399,8 +397,11 @@ function zurueck() {
 
 function zuruecksetzen() {
 	uebernehmen(termin.value)
+	konflikt.value = null
 	fehler.value = ''
 	fehlerFeld.value = ''
+	// Der Knopf „Änderungen verwerfen“ ist jetzt gesperrt.
+	fokusHalten()
 }
 
 function eingaben() {
@@ -413,7 +414,8 @@ function eingaben() {
 }
 
 async function speichern() {
-	if (speichert.value) {
+	// Ohne Änderungen ist der Knopf nur als gesperrt gekennzeichnet (aria-disabled); dann nichts tun.
+	if (speichert.value || !geaendert.value) {
 		return
 	}
 	speichert.value = true
@@ -434,18 +436,22 @@ async function speichern() {
 		// Erst nach dem Übernehmen der neuen Daten melden, sonst räumt die Änderung der Werte die Meldung weg.
 		meldung.value = 'Gespeichert. Die Planung steht jetzt im Kalendertermin.'
 		speichert.value = false
-		// Der Knopf ist jetzt gesperrt (nichts mehr zu speichern); der Fokus geht auf die Meldung statt auf BODY.
-		await fokus(erfolgElement.value)
+		await fokusHalten()
 	} catch (e) {
 		speichert.value = false
 		if (fehlerStatus(e) === 409) {
 			await konfliktZeigen()
-			await fokus(fehlerElement.value)
+			await fokusHalten()
 			return
 		}
-		fehler.value = fehlerMeldung(e)
+		fehler.value = fehlertext(e)
 		fehlerFeld.value = fehlerStatus(e) === 400 ? feldAusMeldung(fehler.value) : ''
-		await fokus(fehlerFeld.value ? document.getElementById('feld-' + fehlerFeld.value) : fehlerElement.value)
+		if (fehlerFeld.value) {
+			// Mit Feldbezug: Fokus aufs Feld, die Meldung hängt per aria-describedby daran.
+			await fokus(document.getElementById('feld-' + fehlerFeld.value))
+		} else {
+			await fokusHalten()
+		}
 	}
 }
 
@@ -497,10 +503,11 @@ async function neuenStandLaden() {
 		fehler.value = ''
 		fehlerFeld.value = ''
 		meldung.value = 'Der neue Stand ist geladen.'
-		await fokus(erfolgElement.value)
+		// Die Konflikt-Knöpfe sind weg; der Fokus geht auf „Speichern“.
+		await fokusHalten()
 	} catch (e) {
-		fehler.value = fehlerMeldung(e)
-		await fokus(fehlerElement.value)
+		fehler.value = fehlertext(e)
+		await fokusHalten()
 	}
 }
 
@@ -513,8 +520,8 @@ async function eingabenBehalten() {
 	try {
 		neu = await terminLaden(props.kalender, props.termin)
 	} catch (e) {
-		fehler.value = fehlerMeldung(e)
-		await fokus(fehlerElement.value)
+		fehler.value = fehlertext(e)
+		await fokusHalten()
 		return
 	}
 	const neueWerte = formularWerte(neu)
@@ -544,6 +551,18 @@ async function eingabenBehalten() {
 		werte[name] = neueWerte[name]
 	}
 	termin.value = neu
+	// Der alte Vergleich gilt nicht mehr: Er verschwindet, auch wenn das Speichern mit 400 scheitert; ein neuer
+	// Konflikt (409) bringt einen neuen Vergleich.
+	konflikt.value = null
+	if (!geaendert.value) {
+		// Deine Eingaben stehen schon genau so im neuen Stand.
+		fehler.value = ''
+		meldung.value = 'Deine Eingaben stimmen mit dem neuen Stand überein; es gab nichts mehr zu speichern.'
+		await fokusHalten()
+		return
+	}
+	// Die Konflikt-Knöpfe sind weg; den Fokus auf „Speichern“, bis das Ergebnis da ist.
+	await fokusHalten()
 	await speichern()
 }
 </script>
@@ -595,12 +614,6 @@ async function eingabenBehalten() {
 
 	&__lesen {
 		margin: 0;
-		border-radius: var(--border-radius-element, 8px);
-
-		&:focus-visible {
-			outline: 2px solid var(--color-main-text);
-			outline-offset: 2px;
-		}
 	}
 
 	&__eintrag {
@@ -679,6 +692,21 @@ async function eingabenBehalten() {
 		&:empty {
 			border: none;
 		}
+	}
+
+	&__auswahl {
+		width: 100%;
+		margin: 0;
+
+		&[aria-invalid='true'] {
+			border-color: var(--color-error);
+		}
+	}
+
+	// Speichern ohne Änderungen: nur als gesperrt gezeigt (aria-disabled), damit der Fokus bleiben kann.
+	&__gesperrt {
+		opacity: .5;
+		cursor: default;
 	}
 
 	&__konflikt {

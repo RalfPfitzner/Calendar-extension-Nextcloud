@@ -27,8 +27,25 @@ export function adresseSchreiben(zustand, neuerEintrag) {
 	const text = parameter.toString()
 	const ziel = window.location.pathname + (text ? '?' + text : '')
 	if (neuerEintrag) {
-		window.history.pushState(null, '', ziel)
+		window.history.pushState({ [INDEX]: eintragIndex() + 1 }, '', ziel)
 	} else {
-		window.history.replaceState(null, '', ziel)
+		window.history.replaceState({ [INDEX]: eintragIndex() }, '', ziel)
 	}
+}
+
+/**
+ * Jeder Eintrag der App im Verlauf trägt seine Position (`calplanIndex` in `history.state`), damit die App bei
+ * popstate weiß, wie weit und in welche Richtung (Zurück oder Vor) der Browser gesprungen ist (U-KAL-04).
+ */
+const INDEX = 'calplanIndex'
+
+/** Position des Eintrags, auf dem der Browser gerade steht; 0, wenn er keine trägt (erster Aufruf). */
+export function eintragIndex(zustand = window.history.state) {
+	const index = zustand?.[INDEX]
+	return Number.isInteger(index) ? index : 0
+}
+
+/** Ob ein Verlaufseintrag (`history.state`) von der App stammt. */
+export function hatIndex(zustand) {
+	return Number.isInteger(zustand?.[INDEX])
 }

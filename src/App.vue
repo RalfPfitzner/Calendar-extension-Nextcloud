@@ -47,7 +47,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import TerminListe from './components/TerminListe.vue'
 import { einstellungenLaden, fehlertext, kalenderLaden, kalenderWaehlen, terminVorladen } from './api.js'
-import { adresseLesen, adresseSchreiben } from './adresse.js'
+import { adresseLesen, adresseSchreiben, eintragIndex } from './adresse.js'
 
 // Formular und Rückfrage (NcDialog) braucht die Liste nicht; sie kommen erst bei Bedarf (P-KAL-05).
 const formularLaden = () => import('./components/PlanungFormular.vue')
@@ -93,8 +93,8 @@ async function verwerfenErlaubt() {
 		await new Promise((weiter) => setTimeout(weiter, 20))
 	}
 	if (!rueckfrage.value) {
-		// Notlösung, falls der Dialog nicht lädt: Eingaben nie still verwerfen.
-		return window.confirm('Die Änderungen sind noch nicht gespeichert. Trotzdem verwerfen?')
+		// Lädt der Dialog nicht, bleiben die Eingaben: nie still verwerfen.
+		return false
 	}
 	return rueckfrage.value.fragen({
 		titel: 'Änderungen verwerfen?',
@@ -105,12 +105,16 @@ async function verwerfenErlaubt() {
 }
 
 /**
- * Nach einem Wechsel zwischen Liste und Formular: Fokus auf die Überschrift der neuen Ansicht und Ansage (U-KAL-08).
+ * Nach einem Wechsel zwischen Liste und Formular: Fokus auf die Überschrift der neuen Ansicht (U-KAL-08). Bildschirmleser
+ * lesen die fokussierte Überschrift vor; nur wenn der Fokus dort nicht hin darf (jemand hat inzwischen selbst etwas
+ * angeklickt), sagt die Live-Region „Angezeigt: …“ an, sonst käme alles doppelt.
  * Das Formular zeigt seine Überschrift erst nach dem Laden; bis dahin steht der Fokus auf dem Bereich, nie auf BODY.
  */
 let beobachter = null
 async function ansichtGewechselt() {
 	beobachter?.disconnect()
+	beobachter = null
+	ansage.value = ''
 	await nextTick()
 	const wurzel = bereich.value
 	if (!wurzel) {
@@ -122,52 +126,108 @@ async function ansichtGewechselt() {
 		if (!ueberschrift) {
 			return false
 		}
-		// Hat jemand inzwischen selbst etwas angeklickt, den Fokus dort lassen.
 		if (document.activeElement === wurzel || document.activeElement === document.body) {
 			ueberschrift.setAttribute('tabindex', '-1')
 			ueberschrift.focus()
 		}
-		ansage.value = ''
-		nextTick(() => {
-			ansage.value = 'Angezeigt: ' + ueberschrift.textContent.trim()
-		})
+		if (document.activeElement !== ueberschrift) {
+			nextTick(() => {
+				ansage.value = 'Angezeigt: ' + ueberschrift.textContent.trim()
+			})
+		}
 		return true
 	}
 	if (fokussieren()) {
 		return
 	}
-	beobachter = new MutationObserver(() => {
+	// Jeder Aufruf hat seinen eigenen Beobachter; Zeitgrenze und Abschluss trennen nur diesen.
+	const eigener = new MutationObserver(() => {
 		if (fokussieren()) {
-			beobachter.disconnect()
-			beobachter = null
+			eigener.disconnect()
+			if (beobachter === eigener) {
+				beobachter = null
+			}
 		}
 	})
-	beobachter.observe(wurzel, { childList: true, subtree: true })
+	beobachter = eigener
+	eigener.observe(wurzel, { childList: true, subtree: true })
 	// Erscheint keine Überschrift (z. B. Ladefehler), nicht ewig beobachten.
 	setTimeout(() => {
-		beobachter?.disconnect()
-		beobachter = null
+		eigener.disconnect()
+		if (beobachter === eigener) {
+			beobachter = null
+		}
 	}, 10000)
 }
 
-async function zurueckTaste() {
+/** Position des Verlaufseintrags, den die App gerade zeigt (siehe adresse.js). */
+let index = eintragIndex()
+/**
+ * Läuft gerade ein Rücksprung auf den Formular-Eintrag (`history.go`), den die App selbst ausgelöst hat: dessen popstate
+ * übergehen. `fertig` meldet, dass der Browser wieder auf dem Formular steht.
+ */
+let ruecksprung = null
+
+/**
+ * Zurück- und Vor-Taste. Mit ungespeicherten Eingaben springt der Browser erst auf den Formular-Eintrag zurück (in
+ * der Gegenrichtung, so weit er gesprungen ist), dann fragt die App (U-KAL-04). „Weiter bearbeiten“ lässt den Verlauf
+ * so, wie er war; „Änderungen verwerfen“ springt zum Ziel. Es entstehen keine neuen Einträge, Vorwärts-Einträge bleiben.
+ */
+async function verlaufGewechselt(ereignis) {
+	const ziel = eintragIndex(ereignis.state)
+	if (ruecksprung !== null) {
+		if (ziel === ruecksprung.index) {
+			const fertig = ruecksprung.fertig
+			ruecksprung = null
+			fertig()
+			return
+		}
+		// Unerwarteter Sprung während des Rücksprungs (schnelles Mehrfachklicken): normal behandeln.
+		ruecksprung = null
+	}
 	const neu = adresseLesen()
 	const formularWeg = zustand.termin !== '' && (neu.termin !== zustand.termin || neu.kalender !== zustand.kalender)
 	if (formularWeg && ungespeichert.value) {
-		// Den Browser zurück auf das Formular stellen, bis entschieden ist (U-KAL-04).
-		const ziel = window.location.pathname + window.location.search
-		adresseSchreiben(zustand, true)
+		const schritte = ziel - index
+		if (schritte === 0) {
+			// Eintrag ohne Position (nicht von der App): Adresse ersetzen statt springen.
+			const zielAdresse = window.location.pathname + window.location.search
+			adresseNeu(false)
+			if (await verwerfenErlaubt()) {
+				ungespeichert.value = false
+				window.history.replaceState(window.history.state, '', zielAdresse)
+				Object.assign(zustand, neu)
+				ansichtGewechselt()
+			}
+			return
+		}
+		const formular = index
+		await new Promise((fertig) => {
+			ruecksprung = { index: formular, fertig }
+			window.history.go(-schritte)
+			// Kommt das popstate nicht (sollte nicht passieren), nicht ewig warten.
+			setTimeout(fertig, 2000)
+		})
 		if (!await verwerfenErlaubt()) {
 			return
 		}
-		window.history.replaceState(null, '', ziel)
 		ungespeichert.value = false
+		// Zum Ziel springen; das popstate dort läuft ohne ungespeicherte Eingaben durch diese Funktion.
+		window.history.go(schritte)
+		return
 	}
+	index = ziel
 	const wechsel = neu.termin !== zustand.termin
 	Object.assign(zustand, neu)
 	if (wechsel) {
 		ansichtGewechselt()
 	}
+}
+
+/** Schreibt den Zustand in die Adresse (neuer Eintrag oder ersetzen) und merkt sich dessen Position. */
+function adresseNeu(neuerEintrag) {
+	adresseSchreiben(zustand, neuerEintrag)
+	index = eintragIndex()
 }
 
 /** Warnung des Browsers beim Schließen oder Neuladen mit ungespeicherten Eingaben. */
@@ -179,7 +239,7 @@ function warnen(ereignis) {
 }
 
 onMounted(async () => {
-	window.addEventListener('popstate', zurueckTaste)
+	window.addEventListener('popstate', verlaufGewechselt)
 	window.addEventListener('beforeunload', warnen)
 	// Steht ein Termin in der Adresse, laden Formular-Code und Termin parallel zu Kalendern und Einstellungen.
 	if (zustand.termin && zustand.kalender) {
@@ -203,12 +263,12 @@ onMounted(async () => {
 			zustand.seite = 1
 		}
 		zustand.kalender = gewaehlt ? String(gewaehlt.id) : ''
-		adresseSchreiben(zustand, false)
+		adresseNeu(false)
 	}
 })
 
 onBeforeUnmount(() => {
-	window.removeEventListener('popstate', zurueckTaste)
+	window.removeEventListener('popstate', verlaufGewechselt)
 	window.removeEventListener('beforeunload', warnen)
 	beobachter?.disconnect()
 })
@@ -221,13 +281,13 @@ function aendern(neu) {
 		hinweis.value = ''
 	}
 	Object.assign(zustand, neu)
-	adresseSchreiben(zustand, true)
+	adresseNeu(true)
 }
 
 function oeffnen(termin) {
 	hinweis.value = ''
 	zustand.termin = termin
-	adresseSchreiben(zustand, true)
+	adresseNeu(true)
 	window.scrollTo(0, 0)
 	ansichtGewechselt()
 }
@@ -238,7 +298,7 @@ async function zurListe() {
 	}
 	ungespeichert.value = false
 	zustand.termin = ''
-	adresseSchreiben(zustand, true)
+	adresseNeu(true)
 	ansichtGewechselt()
 }
 </script>

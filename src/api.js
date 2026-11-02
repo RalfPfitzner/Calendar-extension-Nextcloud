@@ -5,6 +5,7 @@ const url = (pfad) => generateUrl('/apps/calendar_planning/api' + pfad)
 
 export const MELDUNG_NETZ = 'Verbindung zur Nextcloud fehlgeschlagen. Bitte die Netzwerkverbindung prüfen und es erneut versuchen.'
 export const MELDUNG_ZU_VIELE = 'Zu viele Anfragen in kurzer Zeit. Bitte kurz warten und es dann erneut versuchen.'
+export const MELDUNG_PROGRAMM = 'Unerwarteter Fehler in der App. Bitte die Seite neu laden; bleibt es dabei, wende dich an die Administration.'
 export const MELDUNG_SITZUNG = 'Deine Anmeldung bei der Nextcloud ist abgelaufen. Melde dich in einem neuen Tab neu an und versuche es '
 	+ 'dann hier erneut – deine Eingaben bleiben bis dahin hier stehen.'
 
@@ -66,12 +67,21 @@ axios.interceptors.response.use((antwort) => {
 	throw new ApiFehler(status, meldungFuer(status, daten), daten)
 })
 
-/** Text für Nutzer zu einem Fehler aus diesen Funktionen (oder eine allgemeine Meldung). */
+/**
+ * Text für Nutzer zu einem Fehler; die eine Stelle für Meldungen in der App. Fehler aus den Anfragen sind ApiFehler;
+ * alles andere ohne Antwort ist ein Programmfehler (z. B. TypeError) und keine Netzstörung.
+ */
 export function fehlertext(fehler) {
 	if (fehler instanceof ApiFehler) {
 		return fehler.message
 	}
-	return fehler?.response ? meldungFuer(fehler.response.status, fehler.response.data) : MELDUNG_NETZ
+	if (fehler?.response) {
+		return meldungFuer(fehler.response.status, fehler.response.data)
+	}
+	if (fehler?.isAxiosError || axios.isCancel(fehler)) {
+		return MELDUNG_NETZ
+	}
+	return MELDUNG_PROGRAMM
 }
 
 /** Einstellungen für die Oberfläche: Standardort und Feldschema. */
@@ -91,13 +101,16 @@ export async function termineLaden(parameter) {
 	return (await axios.get(url('/termine'), { params: parameter })).data
 }
 
+/** Vorgeladener Termin; gilt nur für das erste `terminLaden` und höchstens VORLADEN_GUELTIG Millisekunden. */
 let vorgeladen = null
+const VORLADEN_GUELTIG = 10000
 
 export async function terminLaden(kalender, termin) {
-	if (vorgeladen && vorgeladen.kalender === kalender && vorgeladen.termin === termin) {
-		const { antwort } = vorgeladen
-		vorgeladen = null
-		return antwort
+	const vorrat = vorgeladen
+	// Beim ersten Laden verbraucht oder verworfen: Ein anderer Termin oder ein später geöffneter bekommt frische Daten.
+	vorgeladen = null
+	if (vorrat && vorrat.kalender === kalender && vorrat.termin === termin && Date.now() - vorrat.zeit < VORLADEN_GUELTIG) {
+		return vorrat.antwort
 	}
 	return (await axios.get(url('/termin'), { params: { kalender, termin } })).data
 }
@@ -110,7 +123,7 @@ export function terminVorladen(kalender, termin) {
 	const antwort = axios.get(url('/termin'), { params: { kalender, termin } }).then((a) => a.data)
 	// Wird der Termin nie abgeholt (z. B. unbekannter Kalender), soll kein unbehandelter Fehler entstehen.
 	antwort.catch(() => {})
-	vorgeladen = { kalender, termin, antwort }
+	vorgeladen = { kalender, termin, antwort, zeit: Date.now() }
 }
 
 export async function terminSpeichern(kalender, termin, etag, planung) {

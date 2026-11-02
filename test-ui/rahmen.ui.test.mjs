@@ -41,7 +41,7 @@ after(async () => {
 	await browser?.close()
 })
 
-const ansage = () => seite.locator('.planung [role=status]').innerText()
+const ansage = () => seite.locator('.planung > [role=status]').innerText()
 const fokus = () => seite.evaluate(() => ({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent?.trim() }))
 
 async function listeOeffnen() {
@@ -62,19 +62,19 @@ test('Nur eine main-Landmarke (U-KAL-13)', async () => {
 	assert.deepEqual(fehler, [])
 })
 
-test('Wechsel Liste ↔ Formular: Fokus auf der Überschrift und Ansage (U-KAL-08)', async () => {
+test('Wechsel Liste ↔ Formular: Fokus auf der Überschrift, keine doppelte Ansage (U-KAL-08)', async () => {
 	await listeOeffnen()
 	await formularOeffnen()
 	await seite.waitForFunction(() => document.activeElement?.tagName === 'H2')
 	const imFormular = await fokus()
 	assert.match(imFormular.text, /^Planung: Lötworkshop/)
-	await seite.waitForFunction(() => /Planung: Lötworkshop/.test(document.querySelector('.planung [role=status]')?.textContent ?? ''))
+	// Die fokussierte Überschrift wird vorgelesen; die Live-Region bleibt dann leer.
+	assert.equal((await ansage()).trim(), '')
 
 	await seite.getByRole('button', { name: /Zur Liste/ }).click()
 	await seite.waitForFunction(() => document.activeElement?.tagName === 'H2')
 	assert.equal((await fokus()).text, 'Veranstaltungen planen')
-	await seite.waitForFunction(() => /Veranstaltungen planen/.test(document.querySelector('.planung [role=status]')?.textContent ?? ''))
-	assert.match(await ansage(), /Angezeigt: Veranstaltungen planen/)
+	assert.equal((await ansage()).trim(), '')
 
 	// Auch die Zurück-Taste lässt den Fokus nicht auf BODY fallen.
 	await formularOeffnen()
@@ -82,6 +82,28 @@ test('Wechsel Liste ↔ Formular: Fokus auf der Überschrift und Ansage (U-KAL-0
 	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
 	await seite.waitForFunction(() => document.activeElement?.tagName === 'H2')
 	assert.notEqual((await fokus()).tag, 'BODY')
+	assert.deepEqual(fehler, [])
+})
+
+test('Wechsel, während der Fokus woanders steht: Fokus bleibt, die Live-Region sagt die Ansicht an (U-KAL-08)', async () => {
+	await listeOeffnen()
+	// Den Termin zurückhalten, bis der Fokus auf „Zur Liste“ steht (wie ein Klick während des Ladens).
+	let freigeben
+	const gehalten = new Promise((weiter) => { freigeben = weiter })
+	const muster = '**/apps/calendar_planning/api/termin?**'
+	await seite.route(muster, async (route) => {
+		await gehalten
+		await route.continue()
+	})
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').click()
+	const knopf = seite.getByRole('button', { name: /Zur Liste/ })
+	await knopf.waitFor()
+	await knopf.focus()
+	freigeben()
+	await seite.getByRole('heading', { name: /Planung: Lötworkshop/ }).waitFor()
+	await seite.waitForFunction(() => /Angezeigt: Planung: Lötworkshop/.test(document.querySelector('.planung > [role=status]')?.textContent ?? ''))
+	assert.match((await fokus()).text, /Zur Liste/)
+	await seite.unroute(muster)
 	assert.deepEqual(fehler, [])
 })
 
@@ -115,6 +137,93 @@ test('Zurück-Taste mit ungespeicherter Eingabe fragt nach, „Weiter bearbeiten
 	await dialog.getByRole('button', { name: 'Änderungen verwerfen' }).click()
 	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
 	assert.doesNotMatch(seite.url(), /termin=/)
+	assert.deepEqual(fehler, [])
+})
+
+const dialogText = 'Die Änderungen sind noch nicht gespeichert.'
+/** Wartet auf die Rückfrage und klickt einen ihrer Knöpfe; danach ist sie weg. */
+async function antworten(knopf) {
+	const dialog = seite.getByRole('dialog')
+	await dialog.getByText(dialogText).waitFor()
+	await dialog.getByRole('button', { name: knopf }).click()
+	await dialog.waitFor({ state: 'detached' })
+}
+const terminInAdresse = () => new URL(seite.url()).searchParams.get('termin')
+
+test('Nach „Änderungen verwerfen“ über die Zurück-Taste steht die Liste nur einmal im Verlauf (U-KAL-04)', async () => {
+	await seite.goto('about:blank')
+	await listeOeffnen()
+	await formularOeffnen()
+	await seite.getByLabel('Zuständig intern').fill('Noch nicht gespeichert')
+	await seite.goBack()
+	await antworten('Änderungen verwerfen')
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
+	await seite.waitForFunction(() => !new URLSearchParams(location.search).has('termin'))
+	// Noch einmal zurück: die Seite vor der App, nicht ein zweites Mal die Liste.
+	await seite.goBack()
+	await seite.waitForURL('about:blank')
+	assert.deepEqual(fehler, [])
+})
+
+test('„Weiter bearbeiten“ lässt Vorwärts-Einträge stehen; Vor-Taste mit Eingaben fragt ebenso (U-KAL-04)', async () => {
+	// Verlauf: Liste, Formular Lötworkshop, Liste, Formular Offene Werkstatt.
+	await listeOeffnen()
+	await formularOeffnen()
+	await seite.getByRole('button', { name: /Zur Liste/ }).click()
+	await seite.locator('tbody').getByText('Offene Werkstatt').first().click()
+	await seite.getByRole('heading', { name: /Planung: Offene Werkstatt/ }).waitFor()
+	await seite.goBack()
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
+	await seite.goBack()
+	await seite.getByRole('heading', { name: /Planung: Lötworkshop/ }).waitFor()
+	const adresse = seite.url()
+	const gespeichert = await seite.getByLabel('Zuständig intern').inputValue()
+	await seite.getByLabel('Zuständig intern').fill('Noch nicht gespeichert')
+
+	// Zurück und „Weiter bearbeiten“: Formular und Adresse bleiben.
+	await seite.goBack()
+	await antworten('Weiter bearbeiten')
+	await seite.waitForURL(adresse)
+	assert.equal(await seite.getByLabel('Zuständig intern').inputValue(), 'Noch nicht gespeichert')
+	// Vor und „Weiter bearbeiten“: ebenso.
+	await seite.goForward()
+	await antworten('Weiter bearbeiten')
+	await seite.waitForURL(adresse)
+	assert.equal(await seite.getByLabel('Zuständig intern').inputValue(), 'Noch nicht gespeichert')
+	// Vor und verwerfen: die Liste danach, und die Vor-Taste führt weiter zum zweiten Formular.
+	await seite.goForward()
+	await antworten('Änderungen verwerfen')
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
+	await seite.waitForFunction(() => !new URLSearchParams(location.search).has('termin'))
+	await seite.goForward()
+	await seite.getByRole('heading', { name: /Planung: Offene Werkstatt/ }).waitFor()
+	assert.equal(terminInAdresse(), 'serie-1.ics')
+	// Und zurück über alle Einträge: Liste, Formular Lötworkshop (ohne Rückfrage, Eingaben sind verworfen), Liste.
+	await seite.goBack()
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
+	await seite.goBack()
+	await seite.getByRole('heading', { name: /Planung: Lötworkshop/ }).waitFor()
+	assert.equal(await seite.getByLabel('Zuständig intern').inputValue(), gespeichert)
+	await seite.goBack()
+	await seite.waitForFunction(() => !new URLSearchParams(location.search).has('termin'))
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
+	assert.equal(await seite.getByRole('dialog').count(), 0)
+	assert.deepEqual(fehler, [])
+})
+
+test('Vor-Taste ins Formular und wieder zurück, ohne Änderungen ohne Rückfrage (U-KAL-04, U-KAL-08)', async () => {
+	await listeOeffnen()
+	await formularOeffnen()
+	await seite.goBack()
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
+	await seite.goForward()
+	await seite.getByRole('heading', { name: /Planung: Lötworkshop/ }).waitFor()
+	await seite.waitForFunction(() => document.activeElement?.tagName === 'H2')
+	assert.equal(terminInAdresse(), 'workshop-1.ics')
+	await seite.goBack()
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
+	assert.equal(terminInAdresse(), null)
+	assert.equal(await seite.getByRole('dialog').count(), 0)
 	assert.deepEqual(fehler, [])
 })
 

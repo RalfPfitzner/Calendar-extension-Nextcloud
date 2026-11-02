@@ -83,8 +83,6 @@ const imViewport = (locator) => locator.evaluate((e) => {
 	return r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight
 })
 
-const fokusTag = (tab) => tab.evaluate(() => document.activeElement?.tagName ?? 'BODY')
-
 test('Liste lädt ohne Fehler und ohne „null“', async () => {
 	await seite.goto(BASIS + '/index.php/apps/calendar_planning/')
 	await seite.getByText('Lötworkshop Grundschule').waitFor()
@@ -190,20 +188,18 @@ test('Lesefreigabe: private Termine fehlen, Formular nur zum Lesen', async () =>
 	await tab.getByText('Lötworkshop Grundschule').click()
 	await tab.getByText('Diesen Kalender darfst du nur lesen.').waitFor()
 	assert.equal(await tab.getByRole('button', { name: 'Speichern' }).count(), 0)
-	// U-KAL-09: Werte als Beschreibungsliste in normaler Schriftfarbe, kein gesperrtes Feld; per Tab erreichbar.
+	// U-KAL-09: Werte als Beschreibungsliste in normaler Schriftfarbe, kein gesperrtes Feld; gegliedert durch h3.
 	assert.equal(await tab.locator('.formular').locator('input, textarea, select').count(), 0)
 	const eintrag = tab.locator('.formular__eintrag', { has: tab.getByRole('term').filter({ hasText: /^Zuständig intern$/ }) })
 	assert.equal((await eintrag.getByRole('definition').innerText()).trim(), 'Eva')
 	const farben = await eintrag.getByRole('definition').evaluate((e) => [getComputedStyle(e).color, getComputedStyle(e.previousElementSibling).color])
 	assert.equal(farben[0], farben[1], 'Wert in der Schriftfarbe der Bezeichnung, nicht blass')
+	// Die Liste selbst ist kein Tab-Halt (Lesen mit den Lesetasten); jede Gruppe steht unter einer h3.
 	const liste = eintrag.locator('xpath=ancestor::dl')
-	assert.equal(await liste.getAttribute('tabindex'), '0')
-	let erreicht = false
-	for (let i = 0; i < 15 && !erreicht; i++) {
-		await tab.keyboard.press('Tab')
-		erreicht = await tab.evaluate(() => document.activeElement?.tagName === 'DL')
-	}
-	assert.equal(erreicht, true, 'die Beschreibungsliste ist per Tab erreichbar')
+	assert.equal(await liste.getAttribute('tabindex'), null)
+	assert.equal(await liste.getAttribute('aria-labelledby'), null)
+	assert.equal(await liste.evaluate((e) => e.previousElementSibling?.tagName), 'H3')
+	assert.equal(await tab.locator('.formular dl').count(), await tab.locator('.formular h3').count())
 	assert.deepEqual(evaFehler, [])
 	await kontext.close()
 })
@@ -301,7 +297,21 @@ test('U-KAL-03, Q-KAL-11: Erfolgsmeldung sichtbar und angesagt, Fokus nicht auf 
 	await status.waitFor()
 	assert.equal(await status.getAttribute('aria-live'), 'polite')
 	assert.equal(await imViewport(status), true)
-	assert.notEqual(await fokusTag(seite), 'BODY')
+	// Ansage nur über die Live-Region; der Fokus bleibt auf dem (jetzt als gesperrt gekennzeichneten) Knopf.
+	await seite.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Speichern')
+	const knopf = seite.getByRole('button', { name: 'Speichern' })
+	assert.equal(await knopf.getAttribute('aria-disabled'), 'true')
+	// Nicht nativ gesperrt (Playwrights isDisabled() zählt aria-disabled mit, deshalb die Eigenschaft selbst).
+	assert.equal(await knopf.evaluate((e) => e.disabled), false)
+	assert.equal(await status.getAttribute('tabindex'), null)
+	// Enter auf dem gekennzeichneten Knopf schickt nichts ab.
+	let gesendet = 0
+	const zaehlen = (anfrage) => { if (anfrage.method() === 'PUT') gesendet++ }
+	seite.on('request', zaehlen)
+	await seite.keyboard.press('Enter')
+	await seite.evaluate(() => new Promise((weiter) => requestAnimationFrame(() => requestAnimationFrame(weiter))))
+	seite.off('request', zaehlen)
+	assert.equal(gesendet, 0)
 	// Die Live-Region bleibt im DOM und wird nur geleert.
 	await seite.getByLabel('Zuständig intern').fill('Noch eine Änderung')
 	await seite.waitForFunction(() => document.querySelector('[role=status][aria-live=polite]')?.textContent.trim() === '')
@@ -321,7 +331,9 @@ test('U-KAL-05: Konflikt 409 – Eingaben bleiben, „behalten und erneut speich
 	const meldung = seite.getByRole('alert').filter({ hasText: 'inzwischen geändert' })
 	await meldung.waitFor()
 	assert.equal(await imViewport(meldung), true)
-	assert.notEqual(await fokusTag(seite), 'BODY')
+	// Die Meldung sagt role=alert an; der Fokus bleibt auf „Speichern“ statt auf der Meldung (sonst doppelt).
+	await seite.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Speichern')
+	assert.equal(await meldung.getAttribute('tabindex'), null)
 	await seite.getByText('Im neuen Stand anders:').waitFor()
 	const liste = await seite.locator('.formular__konflikt ul').innerText()
 	assert.match(liste, /Zuständig intern: „Fremder Wert“/)
@@ -366,7 +378,7 @@ test('U-KAL-05: Konflikt 409 – „Neuen Stand laden“ fragt nach und verwirft
 	await seite.getByRole('status').filter({ hasText: 'neue Stand ist geladen' }).waitFor()
 	assert.equal(await seite.getByLabel('Telefon').inputValue(), '0777')
 	assert.equal(await seite.getByRole('alert').filter({ hasText: /\S/ }).count(), 0)
-	assert.notEqual(await fokusTag(seite), 'BODY')
+	await seite.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Speichern')
 	assert.deepEqual(fehler, [])
 })
 
@@ -385,8 +397,11 @@ test('Q-KAL-09: gespeicherter Wert, der keine Option mehr ist, bleibt und lässt
 		assert.equal((await api('PUT', '/schema', { schema: mitAuswahl(['Offen', 'Vortrag']) })).status, 200)
 
 		await formularOeffnen(seite, kalender, 'fuellung-5.ics')
-		const auswahl = seite.locator('.formular__feld', { has: seite.getByText('Art (Test)', { exact: true }) })
-		await auswahl.getByText('Kurs (nicht mehr in der Liste)').waitFor()
+		const auswahl = seite.getByLabel('Art (Test)')
+		assert.equal(await auswahl.evaluate((e) => e.tagName), 'SELECT')
+		assert.equal(await auswahl.inputValue(), 'Kurs')
+		const optionen = () => auswahl.locator('option').evaluateAll((liste) => liste.map((o) => o.textContent.trim()))
+		assert.deepEqual(await optionen(), ['– bitte wählen –', 'Kurs (nicht mehr in der Liste)', 'Offen', 'Vortrag'])
 		await seite.getByLabel('Zuständig intern').fill('Mit Altwert')
 		await seite.getByRole('button', { name: 'Speichern' }).click()
 		await seite.getByRole('status').filter({ hasText: 'Gespeichert' }).waitFor()
@@ -400,14 +415,133 @@ test('Q-KAL-09: gespeicherter Wert, der keine Option mehr ist, bleibt und lässt
 		assert.match(abgelehnt.daten.fehler, /keine der Optionen/)
 
 		// Über die Auswahl auf eine gültige Option wechseln.
-		await seite.getByRole('combobox', { name: 'Art (Test)' }).click()
-		await seite.getByRole('option', { name: 'Vortrag' }).click()
+		await auswahl.selectOption('Vortrag')
 		await seite.getByRole('button', { name: 'Speichern' }).click()
 		await seite.getByRole('status').filter({ hasText: 'Gespeichert' }).waitFor()
 		assert.equal((await api('GET', `/termin?kalender=${kalender}&termin=fuellung-5.ics`)).daten.art_test, 'Vortrag')
-		assert.equal(await auswahl.getByText('(nicht mehr in der Liste)').count(), 0)
+		assert.deepEqual(await optionen(), ['– bitte wählen –', 'Offen', 'Vortrag'])
+
+		// 400 mit Bezug auf das Auswahlfeld: aria-invalid und Fokus direkt am select.
+		const muster = '**/apps/calendar_planning/api/termin'
+		await seite.route(muster, (route) => route.request().method() === 'PUT'
+			? route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ fehler: '„Art (Test)“: „Offen“ ist keine der Optionen' }) })
+			: route.continue())
+		await auswahl.selectOption('Offen')
+		await seite.getByRole('button', { name: 'Speichern' }).click()
+		await seite.getByRole('alert').filter({ hasText: 'ist keine der Optionen' }).waitFor()
+		await seite.unroute(muster)
+		assert.equal(await auswahl.getAttribute('aria-invalid'), 'true')
+		assert.equal(await auswahl.getAttribute('aria-describedby'), 'formular-fehler')
+		assert.equal(await auswahl.evaluate((e) => e === document.activeElement), true)
+		// Leeren über „– bitte wählen –“ (optionales Feld) und verwerfen.
+		await auswahl.selectOption('')
+		assert.equal(await auswahl.inputValue(), '')
+		await seite.getByRole('button', { name: 'Änderungen verwerfen' }).click()
+		assert.equal(await auswahl.inputValue(), 'Vortrag')
+		assert.equal(await auswahl.getAttribute('aria-invalid'), null)
 	} finally {
 		assert.equal((await api('PUT', '/schema', { schema: vorher })).status, 200)
 	}
+	assert.deepEqual(fehler, [])
+})
+
+/** Speichern, auf den Konflikt warten; der Fokus bleibt auf „Speichern“. */
+async function konfliktAbwarten() {
+	await seite.getByRole('button', { name: 'Speichern' }).click()
+	await seite.getByRole('alert').filter({ hasText: 'inzwischen geändert' }).waitFor()
+	await seite.getByText('Im neuen Stand anders:').waitFor()
+}
+
+test('U-KAL-05: „Änderungen verwerfen“ räumt auch den Konflikt weg', async () => {
+	const kalender = await planungskalenderId()
+	await formularOeffnen(seite, kalender, 'fuellung-6.ics')
+	await seite.getByLabel('Telefon').fill('0611')
+	await vonAnderenSpeichern(kalender, 'fuellung-6.ics', { zustaendig: 'Andere Person' })
+	await konfliktAbwarten()
+	await seite.getByRole('button', { name: 'Änderungen verwerfen' }).click()
+	await seite.locator('.formular__konflikt').waitFor({ state: 'detached' })
+	assert.equal(await seite.getByRole('alert').filter({ hasText: /\S/ }).count(), 0)
+	assert.equal(await seite.getByLabel('Telefon').inputValue(), '')
+	// Der Knopf „Änderungen verwerfen“ ist jetzt gesperrt; der Fokus geht auf „Speichern“, nicht auf BODY.
+	await seite.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Speichern')
+	assert.deepEqual(fehler, [])
+})
+
+test('U-KAL-05: 400 nach „Meine Eingaben behalten“ zeigt die Meldung ohne den alten Vergleich', async () => {
+	const kalender = await planungskalenderId()
+	await formularOeffnen(seite, kalender, 'fuellung-7.ics')
+	await seite.getByLabel('Telefon').fill('0711')
+	await vonAnderenSpeichern(kalender, 'fuellung-7.ics', { zustaendig: 'Andere Person' })
+	await konfliktAbwarten()
+	const muster = '**/apps/calendar_planning/api/termin'
+	await seite.route(muster, (route) => route.request().method() === 'PUT'
+		? route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ fehler: '„Telefon“ ist zu lang (Testmeldung)' }) })
+		: route.continue())
+	await seite.getByRole('button', { name: 'Meine Eingaben behalten und erneut speichern' }).click()
+	await seite.getByRole('dialog', { name: 'Eigene Eingaben speichern?' }).getByRole('button', { name: 'Meine Eingaben speichern' }).click()
+	await seite.getByRole('alert').filter({ hasText: 'Testmeldung' }).waitFor()
+	await seite.unroute(muster)
+	assert.equal(await seite.locator('.formular__konflikt').count(), 0)
+	assert.equal(await seite.getByText('Im neuen Stand anders:').count(), 0)
+	assert.equal(await seite.getByLabel('Telefon').getAttribute('aria-invalid'), 'true')
+	assert.equal(await seite.getByLabel('Telefon').evaluate((e) => e === document.activeElement), true)
+	// Die Werte der anderen Person sind übernommen, die eigene Eingabe steht noch.
+	assert.equal(await seite.getByLabel('Zuständig intern').inputValue(), 'Andere Person')
+	assert.equal(await seite.getByLabel('Telefon').inputValue(), '0711')
+	await seite.getByRole('button', { name: 'Änderungen verwerfen' }).click()
+	assert.deepEqual(fehler, [])
+})
+
+test('U-KAL-05: Konflikt bei Titel und Ort – Vergleich nennt beide, eigene Eingabe im Titel gilt, fremder Ort bleibt', async () => {
+	const kalender = await planungskalenderId()
+	await formularOeffnen(seite, kalender, 'fuellung-8.ics')
+	await seite.getByLabel('Titel der Veranstaltung').fill('Mein Titel')
+	await vonAnderenSpeichern(kalender, 'fuellung-8.ics', { titel: 'Fremder Titel', ort_extern: true, ort: 'Andere Halle 5' })
+	await konfliktAbwarten()
+	const liste = await seite.locator('.formular__konflikt ul').innerText()
+	assert.match(liste, /Titel der Veranstaltung: „Fremder Titel“/)
+	assert.match(liste, /Ort: „Andere Halle 5“/)
+	assert.equal(await seite.getByLabel('Titel der Veranstaltung').inputValue(), 'Mein Titel')
+
+	await seite.getByRole('button', { name: 'Meine Eingaben behalten und erneut speichern' }).click()
+	const dialog = seite.getByRole('dialog', { name: 'Eigene Eingaben speichern?' })
+	await dialog.getByText(/ersetzen die neuen Werte in „Titel der Veranstaltung“\./).waitFor()
+	await dialog.getByRole('button', { name: 'Meine Eingaben speichern' }).click()
+	await seite.getByRole('status').filter({ hasText: 'Gespeichert' }).waitFor()
+	const stand = (await api('GET', `/termin?kalender=${kalender}&termin=fuellung-8.ics`)).daten
+	assert.equal(stand.titel, 'Mein Titel')
+	assert.equal(stand.ort_extern, true)
+	assert.equal(stand.ort, 'Andere Halle 5')
+	assert.equal(await seite.getByRole('radio', { name: 'Externer Ort' }).isChecked(), true)
+	assert.equal(await seite.getByLabel('Externer Ort – Adresse').inputValue(), 'Andere Halle 5')
+	assert.deepEqual(fehler, [])
+})
+
+test('U-KAL-05: zweiter Konflikt nach „Meine Eingaben behalten“ zeigt den neuen Vergleich, dann klappt es', async () => {
+	const kalender = await planungskalenderId()
+	await formularOeffnen(seite, kalender, 'fuellung-9.ics')
+	await seite.getByLabel('Telefon').fill('0911')
+	await vonAnderenSpeichern(kalender, 'fuellung-9.ics', { zustaendig: 'Erste Änderung' })
+	await konfliktAbwarten()
+
+	await seite.getByRole('button', { name: 'Meine Eingaben behalten und erneut speichern' }).click()
+	const dialog = seite.getByRole('dialog', { name: 'Eigene Eingaben speichern?' })
+	await dialog.getByRole('button', { name: 'Meine Eingaben speichern' }).waitFor()
+	// Während die Rückfrage offen ist, speichert die andere Person noch einmal.
+	await vonAnderenSpeichern(kalender, 'fuellung-9.ics', { zustaendig: 'Erste Änderung', hinweise: 'Zweite Änderung' })
+	await dialog.getByRole('button', { name: 'Meine Eingaben speichern' }).click()
+	await seite.locator('.formular__konflikt li', { hasText: 'Besondere Wünsche / Hinweise / Anmerkungen: „Zweite Änderung“' }).waitFor()
+	await seite.getByRole('alert').filter({ hasText: 'inzwischen geändert' }).waitFor()
+	assert.equal(await seite.locator('.formular__konflikt li', { hasText: 'Erste Änderung' }).count(), 0, 'der alte Vergleich ist ersetzt')
+	await seite.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Speichern')
+	assert.equal(await seite.getByLabel('Telefon').inputValue(), '0911')
+
+	await seite.getByRole('button', { name: 'Meine Eingaben behalten und erneut speichern' }).click()
+	await dialog.getByRole('button', { name: 'Meine Eingaben speichern' }).click()
+	await seite.getByRole('status').filter({ hasText: 'Gespeichert' }).waitFor()
+	const stand = (await api('GET', `/termin?kalender=${kalender}&termin=fuellung-9.ics`)).daten
+	assert.equal(stand.kontakt_telefon, '0911')
+	assert.equal(stand.zustaendig, 'Erste Änderung')
+	assert.equal(stand.hinweise, 'Zweite Änderung')
 	assert.deepEqual(fehler, [])
 })

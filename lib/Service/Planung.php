@@ -239,7 +239,10 @@ class Planung {
 				continue;
 			}
 			$eigenschaft = self::eigenschaft($schluessel);
-			$gespeichert = isset($termin->{$eigenschaft}) ? (string)$termin->{$eigenschaft}->getValue() : '';
+			$roh = isset($termin->{$eigenschaft}) ? (string)$termin->{$eigenschaft}->getValue() : '';
+			// Den gespeicherten Wert so bereinigen wie die Eingabe (Steuerzeichen, Unsichtbares, Leerraum am Rand),
+			// sonst passt ein Altwert wie „Kurs “ nie zur bereinigten Eingabe „Kurs“. Die Länge zählt hier nicht.
+			$gespeichert = $this->text([$schluessel => $roh], $schluessel, $feld['label'], true, PHP_INT_MAX);
 			if ($wert !== $gespeichert) {
 				throw new PlanungException("„{$feld['label']}“: „" . mb_substr($wert, 0, 40) . '“ ist keine der Optionen');
 			}

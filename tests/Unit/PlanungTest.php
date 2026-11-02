@@ -301,18 +301,35 @@ class PlanungTest extends TestCase {
 		$this->assertStringNotContainsString('X-CALPLAN-ART', $planung->schreiben($ics, $this->eingabe(['art' => ''], $planung), null));
 
 		// Ein anderer Wert, der keine Option ist, wird abgelehnt, auch wenn ein Altwert im Termin steht.
-		foreach (['Workshop', 'kurs', 'Kurs '] as $wert) {
+		foreach (['Workshop', 'kurs', 'Kursx', 'Kur'] as $wert) {
 			try {
-				$planung->schreiben($ics, $planung->pruefen(['titel' => 'T', 'art' => $wert . 'x']), null);
-				$this->fail("„{$wert}x“ nicht abgelehnt");
+				$planung->schreiben($ics, $planung->pruefen(['titel' => 'T', 'art' => $wert]), null);
+				$this->fail("„{$wert}“ nicht abgelehnt");
 			} catch (PlanungException $e) {
 				$this->assertSame(400, $e->getCode());
-				$this->assertStringContainsString('keine der Optionen', $e->getMessage());
+				$this->assertStringContainsString('„Art“: „' . $wert . '“ ist keine der Optionen', $e->getMessage());
 			}
 		}
+		// „Kurs “ wird beim Prüfen zu „Kurs“ bereinigt und ist damit der unveränderte Altwert.
+		$this->assertStringContainsString('X-CALPLAN-ART:Kurs', $planung->schreiben($ics, $planung->pruefen(['titel' => 'T', 'art' => 'Kurs ']), null));
 		// Ohne gespeicherten Wert gilt nur die Liste.
 		$this->expectException(PlanungException::class);
 		$planung->schreiben(self::ics(), $this->eingabe(['art' => 'Kurs'], $planung), null);
+	}
+
+	/** Der gespeicherte Altwert wird vor dem Vergleich bereinigt wie die Eingabe (Leerraum, Unsichtbares, Steuerzeichen). */
+	public function testAuswahlAltwertWirdVorDemVergleichBereinigt(): void {
+		$planung = self::mitFeldern(['key' => 'art', 'label' => 'Art', 'typ' => 'select', 'optionen' => ['Offen']]);
+		foreach (["X-CALPLAN-ART:Kurs \r\n", "X-CALPLAN-ART: Kurs\u{200B}\r\n", "X-CALPLAN-ART:Ku\u{0007}rs\r\n"] as $zeile) {
+			$ics = self::ics($zeile);
+			// Das Formular schickt den Altwert zurück, wie es ihn bekommen hat; pruefen() bereinigt ihn.
+			$gelesen = $planung->lesen($ics)['art'];
+			$neu = $planung->schreiben($ics, $planung->pruefen(['titel' => 'T', 'art' => $gelesen]), null);
+			$this->assertStringContainsString("X-CALPLAN-ART:Kurs\r\n", $neu, $zeile);
+		}
+		// Ein anderer Wert bleibt abgelehnt.
+		$this->expectExceptionMessage('„Art“: „Kursus“ ist keine der Optionen');
+		$planung->schreiben(self::ics("X-CALPLAN-ART:Kurs \r\n"), $planung->pruefen(['titel' => 'T', 'art' => 'Kursus']), null);
 	}
 
 	public function testJaNeinFeld(): void {
