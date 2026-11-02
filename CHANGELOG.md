@@ -29,6 +29,7 @@ Review-Befunde vom 29.10.2026, Teil 1 (Plan `docs/superpowers/plans/2026-11-02-r
 - **Release:** Das Paket wird ohne Schreib- und OIDC-Rechte gebaut; erst ein eigener Job prüft die Prüfsumme, attestiert es und hängt es an den Release-Entwurf. Ein veröffentlichtes Release wird nicht mehr überschrieben (S-KAL-04).
 - **Lieferkette:** actionlint und die Nextcloud-Test-Images per Digest, Kalender-App, Impersonate und die Server-Dateien für den API-Check per SHA-256; gitleaks in der CI; `npm audit` blockiert ab „moderate“ (`minimatch` für `webdav` per `overrides` angehoben) (S-KAL-05).
 - `SECURITY.md`: unterstützte Versionen, App-ID `calendar_planning`, Meldeweg und Prüfung der Pakete (S-KAL-07).
+- **Release-Freigabe:** Der Job, der signiert und hochlädt, läuft in der Umgebung `release`. Mit Prüfer und Tag-Ruleset (Anleitung in `docs/REPO-EINSTELLUNGEN.md`) erzeugt nur noch ein Admin ein Release.
 
 ### Geändert
 - **Einstellungsseite:** Hinweis auf ungespeicherte Änderungen, Rückfrage beim Verlassen; bei schmalem Fenster Karten statt Tabelle, kein seitliches Scrollen von 1280 bis 600 Pixel; verständliche Fehlermeldungen (Abschnitt und Feld ab 1 gezählt, mit Bezeichnung); Feld entfernen mit „Rückgängig“, mehrfach in umgekehrter Reihenfolge, Fokus bleibt beim Verschieben am Feld (U-KAL-10, U-KAL-18, U-KAL-19, U-KAL-20).

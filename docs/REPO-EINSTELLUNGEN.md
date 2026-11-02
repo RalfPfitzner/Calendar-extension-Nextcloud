@@ -11,7 +11,8 @@ Was im Repo liegt, prüft die CI. Diese Punkte liegen in den GitHub-Einstellunge
 | Secret scanning + Push protection | nicht sichtbar | an (für öffentliche Repos kostenlos) | Settings → Security → Secret scanning |
 | Merge-Methoden | nicht sichtbar | nur Squash und Rebase, kein Merge-Commit; Branch nach Merge löschen | Settings → General → Pull Requests |
 | Ruleset „Protect“ | aktiv auf allen Branches: kein Löschen, kein Force-Push, lineare History, PR-Pflicht ohne Reviews | zusätzlich: Pflicht-Check `gate`, `merge` aus den erlaubten Methoden raus | Settings → Rules → Rulesets |
-| Tag-Schutz `v*` | keiner | Tags nicht löschbar, nicht verschiebbar | ebenda, neues Ruleset |
+| Tag-Schutz `v*` | keiner | Tags nicht löschbar, nicht verschiebbar, **anlegen nur durch Admins** (Ralf) | ebenda, neues Ruleset |
+| Umgebung `release` | entsteht beim ersten Release-Lauf ohne Schutz | Pflicht-Prüfer Ralf, nur Tags `v*`: Der Job `veroeffentlichen` (Schreib- und Signaturrechte) wartet auf die Freigabe | Settings → Environments → release |
 | Release-Attestierung | keine | kommt mit dem Release-Workflow ab dem nächsten Tag | nichts zu tun |
 | Dependabot-Regel für Dev-Abhängigkeiten | nicht sichtbar | GitHub-Vorgabe „Dismiss low impact issues for development-scoped dependencies“ einschalten | Settings → Code security → Dependabot → Dependabot rules |
 
@@ -89,10 +90,30 @@ gh api -X POST "repos/$REPO/rulesets" --input - <<'JSON'
   "target": "tag",
   "enforcement": "active",
   "conditions": { "ref_name": { "include": ["refs/tags/v*"], "exclude": [] } },
-  "rules": [ { "type": "deletion" }, { "type": "non_fast_forward" }, { "type": "update" } ]
+  "rules": [ { "type": "creation" }, { "type": "deletion" }, { "type": "non_fast_forward" }, { "type": "update" } ],
+  "bypass_actors": [ { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" } ]
 }
 JSON
 ```
+
+`creation` mit Ausnahme für die Rolle Admin (`actor_id` 5) heißt: Nur Admins legen Release-Tags an. Sonst könnte jeder mit
+Schreibrecht ein `v*`-Tag setzen und damit ein signiertes, attestiertes Paket erzeugen (Review vom 02.11.2026). Gibt es das
+Ruleset schon, die Regel `creation` und `bypass_actors` per `PUT` ergänzen (ID wie oben holen).
+
+Umgebung `release` (der Job `veroeffentlichen` in `release.yml` nutzt sie): Prüfer eintragen und auf Tags `v*` begrenzen.
+
+```bash
+RALF_ID=$(gh api users/RalfPfitzner --jq .id)
+gh api -X PUT "repos/$REPO/environments/release" --input - <<JSON
+{
+  "reviewers": [ { "type": "User", "id": $RALF_ID } ],
+  "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true }
+}
+JSON
+gh api -X POST "repos/$REPO/environments/release/deployment-branch-policies" -f name='v*' -f type=tag
+```
+
+Danach wartet jeder Release-Lauf vor dem Signieren und Hochladen auf „Review deployments → Approve“ im Actions-Lauf.
 
 Ein falscher Tag wird nicht verschoben, sondern durch den nächsten Patch-Release ersetzt; sonst lügen die Release-Notes ab dem Moment.
 

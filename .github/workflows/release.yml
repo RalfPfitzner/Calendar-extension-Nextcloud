@@ -76,6 +76,8 @@ jobs:
   # Code aus dem Repository aus (kein Checkout, kein npm), sondern nimmt nur das Artefakt aus „bauen“.
   veroeffentlichen:
     needs: [version, bauen]
+    # Prüfer und Tag-Regel der Umgebung stehen in docs/REPO-EINSTELLUNGEN.md; ohne Einrichtung läuft der Job wie bisher
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
