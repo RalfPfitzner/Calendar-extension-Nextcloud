@@ -69,7 +69,7 @@ async function terminLoeschen(uid) {
 	await fetch(`${DAV}/${uid}.ics`, { method: 'DELETE', headers: { Authorization: BASIC } })
 }
 
-for (const breite of [1280, 860, 600, 320]) {
+for (const breite of [1280, 1024, 860, 600, 320]) {
 	test(`U-KAL-02: Liste bei ${breite} Pixel ohne seitliches Scrollen, Planungsstatus jeder Zeile sichtbar, auch mit langem Titel`, async () => {
 		const uid = `UI-lang-${breite}`
 		await terminAnlegen(uid, 2, 'UI-' + 'Ueberlangertitelohneleerzeichen'.repeat(3).slice(0, 77), 'UI-' + 'Ortsangabeohneleerzeichen'.repeat(3))
@@ -85,7 +85,19 @@ for (const breite of [1280, 860, 600, 320]) {
 					return { text: zelle.textContent, sichtbar: m.width > 0 && m.left >= r.left - 1 && m.right <= r.right + 1 }
 				})
 				const kopf = [...document.querySelectorAll('thead th')].find((th) => th.textContent.trim() === 'Planung').getBoundingClientRect()
+				// Spaltenzuordnung für Bildschirmleser: jede Zelle mit dem aria-colindex ihres Spaltenkopfs, keine Zelle
+				// mit display:none (sonst rutschen die folgenden Zellen unter den falschen Kopf).
+				const koepfe = [...document.querySelectorAll('thead th')].map((th) => th.getAttribute('aria-colindex'))
+				const zeilen = [...document.querySelectorAll('tbody tr')].map((tr) => [...tr.querySelectorAll('td')].map((td) => td.getAttribute('aria-colindex')))
+				const versteckt = [...document.querySelectorAll('tbody td')].filter((td) => getComputedStyle(td).display === 'none').length
+				const leer = [...document.querySelectorAll('tbody td.liste__leer')].map((td) => td.getBoundingClientRect())
 				return {
+					spaltenZahl: document.querySelector('table').getAttribute('aria-colcount'),
+					koepfe,
+					zeilen,
+					versteckt,
+					leerSichtbar: leer.filter((m) => m.width > 1 || m.height > 1).length,
+					leerZahl: leer.length,
 					seite: document.documentElement.scrollWidth - document.documentElement.clientWidth,
 					rahmen: rahmen.scrollWidth - rahmen.clientWidth,
 					marken,
@@ -96,8 +108,19 @@ for (const breite of [1280, 860, 600, 320]) {
 			assert.ok(masse.rahmen <= 0, `Liste scrollt seitlich um ${masse.rahmen} Pixel`)
 			assert.ok(masse.marken.length > 20, 'Zeilen fehlen')
 			assert.deepEqual(masse.marken.filter((m) => !m.sichtbar), [], 'Planungsstatus außerhalb des sichtbaren Bereichs')
-			if (breite >= 1280) {
+			if (breite >= 1024) {
 				assert.equal(masse.kopfSichtbar, true, 'Spalte „Planung“ nicht sichtbar')
+			}
+			const spalten = Number(masse.spaltenZahl)
+			assert.ok(spalten >= 4, `aria-colcount ${masse.spaltenZahl}`)
+			assert.deepEqual(masse.koepfe, Array.from({ length: spalten }, (_, i) => String(i + 1)))
+			for (const zeile of masse.zeilen) {
+				assert.deepEqual(zeile, masse.koepfe, 'aria-colindex der Zellen passt nicht zu den Spaltenköpfen')
+			}
+			assert.equal(masse.versteckt, 0, 'Zellen mit display:none')
+			assert.ok(masse.leerZahl > 0, 'keine leeren Zellen in den Testdaten')
+			if (breite <= 860) {
+				assert.equal(masse.leerSichtbar, 0, 'leere Zellen nehmen Platz ein')
 			}
 			await ohneNull()
 			if (process.env.SCREENSHOT_DIR) {
@@ -243,6 +266,36 @@ test('U-KAL-14: leere Suche nennt den Suchbegriff und bietet „Suche zurückset
 	assert.equal(await suchfeld().inputValue(), '')
 	assert.equal(suchParameter(), null)
 	assert.equal(await suchfeld().evaluate((e) => e === document.activeElement), true, 'Fokus im Suchfeld')
+	assert.deepEqual(fehler, [])
+})
+
+test('Q-KAL-07: Fehler einer Anfrage verschwindet, wenn die angezeigte Liste wieder gilt', async () => {
+	await listeOeffnen()
+	await seite.route(TERMINE, async (route) => {
+		if (new URL(route.request().url()).searchParams.get('suche') !== 'Kaputt') {
+			return route.continue()
+		}
+		await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ fehler: 'Testfehler aus dem Browser-Test' }) })
+	})
+	await suchfeld().fill('Kaputt')
+	await seite.waitForURL(/suche=Kaputt/)
+	await seite.waitForFunction(() => document.querySelector('.liste__ergebnis')?.getAttribute('aria-busy') === 'false'
+		&& document.querySelector('.liste .notecard--error') !== null)
+	// Die Liste der vorigen Antwort steht noch da; zurück zu genau diesen Parametern: kein neues Laden, keine Fehlerkarte.
+	const anfragen = []
+	const merken = (r) => {
+		if (r.url().includes('/api/termine?')) {
+			anfragen.push(r.url())
+		}
+	}
+	seite.on('request', merken)
+	await suchfeld().fill('')
+	await seite.waitForFunction(() => !new URL(location.href).searchParams.has('suche'))
+	await seite.waitForFunction(() => document.querySelector('.liste .notecard--error') === null)
+	seite.off('request', merken)
+	assert.deepEqual(anfragen, [], 'Liste wurde neu geladen statt die angezeigte zu behalten')
+	await seite.locator('tbody').getByText('Lötworkshop Grundschule').waitFor()
+	await seite.unroute(TERMINE)
 	assert.deepEqual(fehler, [])
 })
 

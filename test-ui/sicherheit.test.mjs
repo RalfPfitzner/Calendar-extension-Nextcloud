@@ -454,19 +454,24 @@ test('24 Systemkalender wie „Contact birthdays“ stehen nicht in der Auswahl 
 	} else {
 		assert.equal(da.status, 207)
 	}
+	// Die ID des Geburtstagskalenders steht nicht in CalDAV (oc:id gibt es nur für Dateien), also aus der Datenbank des
+	// Containers. Ohne ID scheitert der Test, damit die 404-Prüfung unten nie stillschweigend entfällt.
+	assert.ok(mitDocker, `Test 24 braucht Docker-Zugriff auf den Container ${CONTAINER} (NC_NAME)`)
+	const php = `require 'lib/base.php';
+$q = \\OCP\\Server::get(\\OCP\\IDBConnection::class)->getQueryBuilder();
+$q->select('id')->from('calendars')->where($q->expr()->eq('principaluri', $q->createNamedParameter('principals/users/' . $argv[1])))
+	->andWhere($q->expr()->eq('uri', $q->createNamedParameter('contact_birthdays')));
+echo (string)$q->executeQuery()->fetchOne();`
+	const id = imContainer('php', '-r', php, '--', NUTZER).trim()
+	assert.match(id, /^\d+$/, `ID des Geburtstagskalenders nicht gefunden: „${id}“`)
 	const kalender = (await json(await admin.get(`${API}/kalender`))).kalender
 	assert.ok(kalender.length >= 2)
+	assert.equal(kalender.some((k) => String(k.id) === id), false, `Geburtstagskalender ${id} in der Auswahl: ${JSON.stringify(kalender)}`)
 	assert.equal(kalender.some((k) => /birthday|geburtstag/i.test(k.name)), false, JSON.stringify(kalender))
-	// Die ID des Geburtstagskalenders (aus CalDAV) gilt für die App als unbekannt.
-	const props = await (await fetch(geburtstage, {
-		method: 'PROPFIND',
-		headers: { Authorization: basic(NUTZER, PASSWORT), Depth: '0', 'Content-Type': 'application/xml' },
-		body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:id/></d:prop></d:propfind>',
-	})).text()
-	const id = props.match(/<oc:id>(\d+)<\/oc:id>/)?.[1]
-	if (id) {
-		assert.equal((await admin.get(`${API}/termine`, { params: { kalender: id } })).status(), 404)
-	}
+	// Die App kennt ihn nicht: Liste, Auswahl und ein Termin darin antworten mit 404.
+	assert.equal((await admin.get(`${API}/termine`, { params: { kalender: id } })).status(), 404)
+	assert.equal((await admin.get(`${API}/termin`, { params: { kalender: id, termin: 'x.ics' } })).status(), 404)
+	assert.equal((await admin.put(`${API}/kalender/auswahl`, { data: { kalender: Number(id) } })).status(), 404)
 })
 
 test('25 Link in der Beschreibung führt auch die Freigabe (eva) zum richtigen Termin, nur zum Lesen', async () => {

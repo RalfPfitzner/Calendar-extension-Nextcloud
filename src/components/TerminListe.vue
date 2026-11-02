@@ -55,24 +55,25 @@
 				<template v-else>
 					<!-- Kein seitliches Scrollen von 1280 bis 320 Pixel: Unter 861 Pixel stehen die Nebenspalten unter dem
 						Titel, unter 601 Pixel auch Datum und Ort (U-KAL-02). Die Rollen halten die Tabelle für Bildschirmleser
-						zusammen, auch wenn die Zeilen auf schmalen Breiten als Raster gesetzt sind. -->
+						zusammen, auch wenn die Zeilen auf schmalen Breiten als Raster gesetzt sind; aria-colindex ordnet jede Zelle
+						ihrem Spaltenkopf zu, auch wenn leere Zellen nur noch für Bildschirmleser da sind. -->
 					<div class="liste__rahmen" :class="{ 'liste__rahmen--laedt': laedt }">
-						<table role="table">
+						<table role="table" :aria-colcount="spaltenZahl">
 							<thead role="rowgroup">
 								<tr role="row">
-									<th role="columnheader" class="liste__datum">
+									<th role="columnheader" aria-colindex="1" class="liste__datum">
 										Datum
 									</th>
-									<th role="columnheader">
+									<th role="columnheader" aria-colindex="2">
 										Veranstaltung
 									</th>
-									<th role="columnheader">
+									<th role="columnheader" aria-colindex="3">
 										Ort
 									</th>
-									<th v-for="feld in spalten" :key="feld.key" role="columnheader">
+									<th v-for="(feld, nr) in spalten" :key="feld.key" role="columnheader" :aria-colindex="4 + nr">
 										{{ feld.label }}
 									</th>
-									<th role="columnheader" class="liste__planung">
+									<th role="columnheader" :aria-colindex="spaltenZahl" class="liste__planung">
 										Planung
 									</th>
 								</tr>
@@ -82,26 +83,27 @@
 									:key="termin.objekt"
 									role="row"
 									@click="zeileKlick($event, termin.objekt)">
-									<td role="cell" class="liste__datum">
+									<td role="cell" aria-colindex="1" class="liste__datum">
 										{{ zeitraumText(termin) }}
 										<span v-if="termin.serie" class="liste__marke" title="Terminserie: die Planung gilt für alle Termine der Serie">Serie</span>
 									</td>
-									<td role="cell" class="liste__titel">
+									<td role="cell" aria-colindex="2" class="liste__titel">
 										<!-- Echter Link: Mittelklick und Strg-Klick öffnen einen neuen Tab (U-KAL-07). -->
 										<a :href="terminAdresse(termin.objekt)" @click="linkKlick($event, termin.objekt)">
 											{{ termin.titel || '(ohne Titel)' }}
 										</a>
 									</td>
-									<td role="cell" :class="{ 'liste__leer': !termin.ort }">
+									<td role="cell" aria-colindex="3" :class="{ 'liste__leer': !termin.ort }">
 										<span v-if="termin.ort" class="liste__name" aria-hidden="true">Ort: </span>{{ termin.ort }}
 									</td>
-									<td v-for="feld in spalten"
+									<td v-for="(feld, nr) in spalten"
 										:key="feld.key"
 										role="cell"
+										:aria-colindex="4 + nr"
 										:class="{ 'liste__leer': anzeigeWert(feld, termin.felder[feld.key]) === '' }">
 										<span v-if="anzeigeWert(feld, termin.felder[feld.key]) !== ''" class="liste__name" aria-hidden="true">{{ feld.label }}: </span>{{ anzeigeWert(feld, termin.felder[feld.key]) }}
 									</td>
-									<td role="cell" class="liste__planung">
+									<td role="cell" :aria-colindex="spaltenZahl" class="liste__planung">
 										<span class="liste__name" aria-hidden="true">Planung: </span><span :class="termin.geplant ? 'liste__status--geplant' : 'liste__status--offen'">{{ termin.geplant ? 'erfasst' : 'offen' }}</span>
 									</td>
 								</tr>
@@ -144,6 +146,8 @@ const emit = defineEmits(['aendern', 'oeffnen'])
 const ENTPRELLEN = 300
 
 const spalten = computed(() => listenFelder(props.einstellungen.schema))
+/** Datum, Veranstaltung, Ort, die Listenfelder und Planung. */
+const spaltenZahl = computed(() => 4 + spalten.value.length)
 
 const daten = ref(null)
 const laedt = ref(false)
@@ -203,11 +207,13 @@ async function laden() {
 	const parameter = parameterAus(props.zustand)
 	// Nach einer Korrektur der Seite durch den Server steht genau diese Antwort schon da (Q-KAL-07).
 	if (daten.value && JSON.stringify(parameter) === geladenFuer) {
-		// Eine noch laufende Anfrage für etwas anderes darf die Anzeige nicht mehr überschreiben.
+		// Eine noch laufende Anfrage für etwas anderes darf die Anzeige nicht mehr überschreiben, und der Fehler einer
+		// gescheiterten Anfrage dazwischen gilt für die angezeigte Liste nicht.
 		steuerung?.abort()
 		steuerung = null
 		anfrage++
 		laedt.value = false
+		fehler.value = ''
 		return
 	}
 	// Eine ältere Anfrage wird nicht mehr gebraucht (P-KAL-03).
@@ -478,8 +484,16 @@ onBeforeUnmount(() => {
 			display: inline;
 		}
 
-		&__leer {
-			display: none;
+		// Leere Zellen nur optisch verstecken (wie .hidden-visually): Mit display:none fehlten sie Bildschirmlesern,
+		// und die Zellen danach rutschten unter den falschen Spaltenkopf.
+		td.liste__leer {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			padding: 0;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
 		}
 	}
 }

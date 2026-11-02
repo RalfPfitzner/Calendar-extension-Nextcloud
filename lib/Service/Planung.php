@@ -9,6 +9,7 @@ use DateTimeInterface;
 use DateTimeZone;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VEvent;
+use Sabre\VObject\Property\ICalendar\DateTime;
 use Sabre\VObject\Reader;
 use Sabre\VObject\Recur\EventIterator;
 use Sabre\VObject\Recur\NoInstancesException;
@@ -375,7 +376,7 @@ class Planung {
 		} else {
 			$rechenzone = $ortszeit;
 		}
-		$ereignisse = $this->serienEreignisse($kalender, $serie, $ab, $rechenzone);
+		$ereignisse = $this->serienEreignisse($kalender, $serie, $ab, $rechenzone, $ganztags ? $ortszeit : null);
 		try {
 			$iterator = new EventIterator($ereignisse, null, $rechenzone);
 		} catch (NoInstancesException) {
@@ -415,20 +416,62 @@ class Planung {
 	 * ursprünglichen Serie. Die Uhrzeit bleibt (Wanduhr in der Zone des Beginns), die Dauer in Sekunden auch; EXDATE,
 	 * Ausnahmen (RECURRENCE-ID) und UNTIL sind feste Zeitpunkte und bleiben, wie sie sind. Ohne Vorrücken zählt der
 	 * EventIterator jeden Termin ab dem Anfang der Serie und bricht nach 3 500 Terminen ab
-	 * (MaxInstancesExceededException), bei einer täglichen Serie also nach knapp zehn Jahren.
+	 * (MaxInstancesExceededException), bei einer täglichen Serie also nach knapp zehn Jahren. Solche Serien, die nicht
+	 * vorgerückt werden können, fehlen in der Liste und landen im Protokoll (docs/KONZEPT.md).
+	 *
+	 * Bei ganztägigen Serien ($datumIn = Ortszeit) bekommt der EventIterator EXDATE und RECURRENCE-ID als Datum: Manche
+	 * Programme (Outlook) schreiben sie als DATE-TIME mit TZID, z. B. Mitternacht in Berlin; in UTC gerechnet wäre das
+	 * der Vortag, und Ausnahme bzw. Auslassung träfen keinen Termin der Serie.
 	 *
 	 * @return list<VEvent>
 	 */
-	private function serienEreignisse(VCalendar $kalender, VEvent $serie, DateTimeInterface $ab, DateTimeZone $rechenzone): array {
+	private function serienEreignisse(VCalendar $kalender, VEvent $serie, DateTimeInterface $ab, DateTimeZone $rechenzone,
+		?DateTimeZone $datumIn = null): array {
 		$uid = (string)($serie->UID ?? '');
 		$ereignisse = [];
 		foreach ($kalender->select('VEVENT') as $ereignis) {
 			if ($ereignis !== $serie && isset($ereignis->{'RECURRENCE-ID'}) && (string)($ereignis->UID ?? '') === $uid) {
-				$ereignisse[] = $ereignis;
+				$ereignisse[] = $datumIn === null ? $ereignis : self::alsDatum($ereignis, $datumIn);
 			}
 		}
-		array_unshift($ereignisse, $this->vorgerueckt($serie, $ab, $rechenzone) ?? $serie);
+		$erstes = $this->vorgerueckt($serie, $ab, $rechenzone) ?? $serie;
+		array_unshift($ereignisse, $datumIn === null ? $erstes : self::alsDatum($erstes, $datumIn));
 		return $ereignisse;
+	}
+
+	/**
+	 * Das Ereignis mit EXDATE und RECURRENCE-ID als Datum in $zone (siehe serienEreignisse); eine Kopie, wenn etwas
+	 * umzuschreiben ist, sonst das Ereignis selbst.
+	 */
+	private static function alsDatum(VEvent $ereignis, DateTimeZone $zone): VEvent {
+		$umschreiben = false;
+		foreach (['EXDATE', 'RECURRENCE-ID'] as $name) {
+			foreach ($ereignis->select($name) as $wert) {
+				$umschreiben = $umschreiben || ($wert instanceof DateTime && $wert->hasTime());
+			}
+		}
+		if (!$umschreiben) {
+			return $ereignis;
+		}
+		$kopie = clone $ereignis;
+		foreach (['EXDATE', 'RECURRENCE-ID'] as $name) {
+			$tage = [];
+			foreach ($kopie->select($name) as $wert) {
+				if ($wert instanceof DateTime) {
+					foreach ($wert->getDateTimes($zone) as $zeit) {
+						$tage[] = $zeit->setTimezone($zone)->format('Ymd');
+					}
+				}
+			}
+			if ($tage === []) {
+				continue;
+			}
+			unset($kopie->{$name});
+			$tage = array_values(array_unique($tage));
+			// RECURRENCE-ID ist ein einzelner Wert, EXDATE darf mehrere tragen.
+			$kopie->add($name, $name === 'EXDATE' ? $tage : $tage[0], ['VALUE' => 'DATE']);
+		}
+		return $kopie;
 	}
 
 	/** Kopie der Serie mit vorgerücktem Beginn (siehe serienEreignisse), null, wenn das nicht geht oder nichts bringt. */
@@ -447,15 +490,13 @@ class Planung {
 		}
 		$beginn = DateTimeImmutable::createFromInterface($serie->DTSTART->getDateTime($rechenzone));
 		// Täglich ohne BYDAY: jeder Tag im Abstand INTERVAL. Mit BYDAY (täglich oder wöchentlich) und wöchentlich:
-		// ganze Wochen, damit der Wochentag des Beginns bleibt; der muss dann selbst in BYDAY stehen, sonst wäre der
-		// neue Beginn ein Termin, den es in der Serie nicht gibt.
+		// ganze Wochen, damit der Wochentag des Beginns und der Wochenrhythmus bleiben. Steht der Wochentag des Beginns
+		// nicht in BYDAY, zählt der EventIterator den (vorgerückten) Beginn trotzdem als Termin; das schadet nicht, weil
+		// er mindestens zwei Tage vor $ab endet und fastForward ihn überspringt.
 		$periode = $frequenz === 'DAILY' && !isset($teile['BYDAY']) ? $intervall : 7 * $intervall;
-		if (isset($teile['BYDAY'])) {
-			$tage = array_map('strtoupper', (array)$teile['BYDAY']);
-			$wochentag = strtoupper(substr($beginn->format('D'), 0, 2));
-			if (array_diff($tage, ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']) !== [] || !in_array($wochentag, $tage, true)) {
-				return null;
-			}
+		if (isset($teile['BYDAY'])
+			&& array_diff(array_map('strtoupper', (array)$teile['BYDAY']), ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']) !== []) {
+			return null;
 		}
 		$dauer = $this->dauer($serie, $beginn, $rechenzone);
 		// Der neue Beginn endet mindestens zwei Tage vor $ab (Puffer für Sommerzeit und Rundung), so dass fastForward
@@ -463,6 +504,10 @@ class Planung {
 		$tage = intdiv(max(0, $ab->getTimestamp() - $beginn->getTimestamp() - $dauer), 86400) - 2;
 		$sprung = intdiv(max(0, $tage), $periode) * $periode;
 		// Fällt die Uhrzeit am Zieltag in die Lücke der Sommerzeit-Umstellung, eine Periode früher versuchen.
+		// Eigenheit von Sabre bei Serien um 02:xx: Der EventIterator rechnet von Termin zu Termin weiter und bleibt nach
+		// dem ersten Umstellungstag dauerhaft bei 03:xx, expand() zeigt dann 03:xx. Die vorgerückte Kopie beginnt nach
+		// der Lücke wieder um 02:xx, wie es RFC 5545 verlangt (die Wanduhrzeit der Serie gilt an jedem Tag); hier weicht
+		// die Liste also bewusst von expand() ab.
 		$neu = null;
 		foreach ([$sprung, $sprung - $periode] as $versuch) {
 			$kandidat = $beginn->modify("+{$versuch} days");

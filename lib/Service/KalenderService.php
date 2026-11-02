@@ -98,9 +98,9 @@ class KalenderService {
 	/**
 	 * Termine eines Kalenders im Zeitraum, seitenweise.
 	 *
-	 * Jedes Kalenderobjekt wird genau einmal geladen und geparst (P-KAL-02): Das Backend sucht nur per SQL vor
-	 * (Termine, die nach $von enden), Zeitraum, Sichtbarkeit, Suche und Serien prüft Planung::lesen auf derselben
-	 * geparsten Fassung; erst danach wird sortiert, gezählt und die Seite ausgeschnitten.
+	 * Jedes Kalenderobjekt wird höchstens einmal geparst (P-KAL-02): Das Backend sucht nur per SQL vor (Termine, die
+	 * laut Datenbank in den Zeitraum fallen, objekteImZeitraum); Zeitraum, Sichtbarkeit, Suche und Serien prüft
+	 * Planung::lesen auf derselben geparsten Fassung; erst danach wird sortiert, gezählt und die Seite ausgeschnitten.
 	 *
 	 * @param DateTimeImmutable|null $jetzt Bezug für „nächster Termin“ einer Serie (U-KAL-16), ohne Angabe die Uhrzeit
 	 * @return array{termine:list<array<string,mixed>>,seite:int,seiten:int,pro_seite:int,gesamt:int,schreibbar:bool}
@@ -111,7 +111,7 @@ class KalenderService {
 		$jetzt ??= new DateTimeImmutable('now', new DateTimeZone(self::ZONE));
 		$suche = self::suchform(trim($suche));
 		$termine = [];
-		foreach ($this->objekteAb($kalenderId, $von) as $uri) {
+		foreach ($this->objekteImZeitraum($kalenderId, $von, $bis) as $uri) {
 			// Das Objekt liegt nach calendarQuery im Zwischenspeicher des Backends (CalDavBackend::$cachedObjects),
 			// getCalendarObject fragt die Datenbank also nicht noch einmal.
 			$objekt = $this->backend->getCalendarObject($kalenderId, $uri);
@@ -150,15 +150,34 @@ class KalenderService {
 	}
 
 	/**
-	 * URIs der Termine, die nach $von enden. Nur die Bedingung auf das Ende geht an calendarQuery: Mit Anfang und Ende
-	 * zugleich parst das Backend jedes Objekt und löst Serien auf, um den Zeitraum genau zu prüfen
-	 * (`requirePostFilter`), danach parst Planung::lesen dasselbe Objekt noch einmal. So prüft das Backend nur per SQL
-	 * (`lastoccurence`), den Rest Planung::lesen.
+	 * URIs der Termine, die nach $von enden und vor $bis beginnen, laut den Spalten `lastoccurence` und
+	 * `firstoccurence` des Backends.
+	 *
+	 * Mit Anfang und Ende in einer Abfrage parst das Backend jedes passende Objekt und löst Serien auf, um den
+	 * Zeitraum genau zu prüfen (`requirePostFilter`), danach parst Planung::lesen dasselbe Objekt noch einmal. Mit nur
+	 * einer Grenze prüft das Backend rein per SQL, ohne zu parsen. Deshalb zwei Abfragen mit je einer Grenze und davon
+	 * die Schnittmenge: Geparst werden nur die Objekte, die laut Datenbank in den Zeitraum fallen (P-KAL-02), nicht
+	 * mehr alle, die nach $von enden. Beide Abfragen legen jedes gefundene Objekt in den Zwischenspeicher des Backends,
+	 * getCalendarObject fragt die Datenbank danach also nicht noch einmal.
 	 *
 	 * @return list<string>
 	 */
-	private function objekteAb(int $kalenderId, DateTimeImmutable $von): array {
-		return $this->backend->calendarQuery($kalenderId, [
+	private function objekteImZeitraum(int $kalenderId, DateTimeImmutable $von, DateTimeImmutable $bis): array {
+		$abVon = $this->backend->calendarQuery($kalenderId, self::zeitFilter($von, null));
+		if ($abVon === []) {
+			return [];
+		}
+		$vorBis = $this->backend->calendarQuery($kalenderId, self::zeitFilter(null, $bis));
+		return array_values(array_intersect($abVon, $vorBis));
+	}
+
+	/**
+	 * Filter für CalDavBackend::calendarQuery: VEVENT mit genau einer Grenze des Zeitraums (siehe objekteImZeitraum).
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function zeitFilter(?DateTimeImmutable $start, ?DateTimeImmutable $ende): array {
+		return [
 			'name' => 'VCALENDAR',
 			'is-not-defined' => false,
 			'time-range' => false,
@@ -166,11 +185,11 @@ class KalenderService {
 			'comp-filters' => [[
 				'name' => 'VEVENT',
 				'is-not-defined' => false,
-				'time-range' => ['start' => $von, 'end' => null],
+				'time-range' => ['start' => $start, 'end' => $ende],
 				'prop-filters' => [],
 				'comp-filters' => [],
 			]],
-		]);
+		];
 	}
 
 	/**
@@ -204,9 +223,12 @@ class KalenderService {
 	 */
 	private function suchtext(array $daten): string {
 		$teile = [$daten['titel'], $daten['ort']];
+		$ganztags = $daten['ganztags'] === true;
 		foreach (['beginn', 'ende'] as $zeit) {
 			if (is_string($daten[$zeit] ?? null)) {
-				$teile[] = self::anzeigeDatum($daten[$zeit], $daten['ganztags'] === true);
+				// Bei ganztägigen Terminen ist das Ende ausschließlich (Mitternacht nach dem letzten Tag): gesucht wird
+				// nach dem letzten Tag, nicht nach dem Folgetag.
+				$teile[] = self::anzeigeDatum($daten[$zeit], $ganztags, $ganztags && $zeit === 'ende');
 			}
 		}
 		foreach ($this->einstellungen->schema->felder as $schluessel => $feld) {
@@ -234,9 +256,9 @@ class KalenderService {
 	}
 
 	/** Datum, wie die Liste es zeigt (src/datum.js): in der Zone der Oberfläche, ganztägige Termine als UTC-Datum. */
-	private static function anzeigeDatum(string $zeit, bool $ganztags): string {
-		$wert = new DateTimeImmutable($zeit);
-		return $wert->setTimezone(new DateTimeZone($ganztags ? 'UTC' : self::ZONE))->format('d.m.Y');
+	private static function anzeigeDatum(string $zeit, bool $ganztags, bool $tagDavor = false): string {
+		$wert = (new DateTimeImmutable($zeit))->setTimezone(new DateTimeZone($ganztags ? 'UTC' : self::ZONE));
+		return ($tagDavor ? $wert->modify('-1 day') : $wert)->format('d.m.Y');
 	}
 
 	/**

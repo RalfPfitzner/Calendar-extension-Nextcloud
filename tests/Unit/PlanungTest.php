@@ -218,6 +218,45 @@ class PlanungTest extends TestCase {
 		$this->assertSame('2026-06-08T10:00:00+02:00', $this->imZeitraum(self::serie(self::WOECHENTLICH, $ausnahme), '2026-06-03', '2026-07-01')[0]);
 	}
 
+	public function testEndeEinerVerschobenenAusnahmeKommtVonDerAusnahme(): void {
+		// Tägliche Serie seit 2010 (wird vorgerückt) mit DURATION; die Ausnahme hat ein eigenes DTEND mit anderer Dauer.
+		$ausnahme = "BEGIN:VEVENT\r\nUID:s1\r\nDTSTAMP:20260101T000000Z\r\nRECURRENCE-ID;TZID=Europe/Berlin:20261103T100000\r\n"
+			. "DTSTART;TZID=Europe/Berlin:20261103T170000\r\nDTEND;TZID=Europe/Berlin:20261103T194500\r\nSUMMARY:verschoben\r\nEND:VEVENT\r\n";
+		$ics = self::serie("DTSTART;TZID=Europe/Berlin:20100105T100000\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY\r\n", $ausnahme);
+		$this->assertSame(['2026-11-03T17:00:00+01:00', '2026-11-03T19:45:00+01:00'], $this->imZeitraum($ics, '2026-11-03', '2026-11-04'));
+		// Der Termin davor kommt aus der Serie (Dauer eine Stunde).
+		$this->assertSame(['2026-11-02T10:00:00+01:00', '2026-11-02T11:00:00+01:00'], $this->imZeitraum($ics, '2026-11-02', '2026-11-04'));
+	}
+
+	public function testTaeglicheSerieMitBydayOhneWochentagDesBeginns(): void {
+		// Beginn an einem Sonntag, Termine nur werktags: wird trotzdem vorgerückt und liefert einen Werktag im Zeitraum.
+		$ics = self::serie("DTSTART;TZID=Europe/Berlin:20100103T090000\r\nDTEND;TZID=Europe/Berlin:20100103T100000\r\n"
+			. "RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR\r\n");
+		$dauer = PHP_INT_MAX;
+		for ($i = 0; $i < 3; $i++) {
+			$start = hrtime(true);
+			$ergebnis = $this->imZeitraum($ics, '2026-11-01', '2026-11-08');
+			$dauer = min($dauer, hrtime(true) - $start);
+		}
+		$this->assertSame(['2026-11-02T09:00:00+01:00', '2026-11-02T10:00:00+01:00'], $ergebnis);
+		$this->assertLessThan(20_000_000, $dauer, 'mehr als 20 ms für eine Serie');
+		// Am Wochenende kein Termin, auch nicht der (vorgerückte) Sonntag des Beginns.
+		$this->assertNull($this->imZeitraum($ics, '2026-11-07', '2026-11-09'));
+	}
+
+	public function testGanztagsSerieMitAusnahmeUndExdateAlsUhrzeit(): void {
+		// Outlook schreibt RECURRENCE-ID und EXDATE ganztägiger Serien als Mitternacht mit TZID. Der Montag 02.11.2026
+		// ist auf den 20.11. verschoben, der 09.11. fällt aus.
+		$ausnahme = "BEGIN:VEVENT\r\nUID:s1\r\nDTSTAMP:20260101T000000Z\r\nRECURRENCE-ID;TZID=Europe/Berlin:20261102T000000\r\n"
+			. "DTSTART;VALUE=DATE:20261120\r\nDTEND;VALUE=DATE:20261121\r\nSUMMARY:verschoben\r\nEND:VEVENT\r\n";
+		$ics = self::serie("DTSTART;VALUE=DATE:20260105\r\nDTEND;VALUE=DATE:20260106\r\nRRULE:FREQ=WEEKLY\r\n"
+			. "EXDATE;TZID=Europe/Berlin:20261109T000000\r\n", $ausnahme);
+		$this->assertNull($this->imZeitraum($ics, '2026-11-01', '2026-11-05'));
+		$this->assertNull($this->imZeitraum($ics, '2026-11-08', '2026-11-12'));
+		$this->assertSame(['2026-11-16T01:00:00+01:00', '2026-11-17T01:00:00+01:00'], $this->imZeitraum($ics, '2026-11-08', '2026-11-18'));
+		$this->assertSame(['2026-11-20T01:00:00+01:00', '2026-11-21T01:00:00+01:00'], $this->imZeitraum($ics, '2026-11-18', '2026-11-22'));
+	}
+
 	public function testGanztagsSerie(): void {
 		$ics = self::serie("DTSTART;VALUE=DATE:20260601\r\nDTEND;VALUE=DATE:20260602\r\nRRULE:FREQ=DAILY\r\n");
 		$zone = new DateTimeZone('Europe/Berlin');

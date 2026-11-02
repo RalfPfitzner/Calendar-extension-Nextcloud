@@ -79,18 +79,19 @@ class KalenderServiceTest extends TestCase {
 	 * Backend liefert diese Objekte (URI => iCalendar) aus calendarQuery; jedes wird genau einmal geholt.
 	 *
 	 * @param array<string,string> $objekte
+	 * @param array<string,int> $klassen Klassifizierung je URI (0 öffentlich, 1 privat, 2 vertraulich), sonst 0
 	 */
-	private function objekte(array $objekte, int $klasse = 0): void {
+	private function objekte(array $objekte, array $klassen = []): void {
 		$geholt = [];
 		$this->backend->method('calendarQuery')->willReturnCallback(function () use ($objekte, &$geholt) {
 			$geholt = [];
 			return array_keys($objekte);
 		});
 		$this->backend->expects($this->never())->method('getMultipleCalendarObjects');
-		$this->backend->method('getCalendarObject')->willReturnCallback(function ($kalender, $uri) use ($objekte, $klasse, &$geholt) {
+		$this->backend->method('getCalendarObject')->willReturnCallback(function ($kalender, $uri) use ($objekte, $klassen, &$geholt) {
 			$this->assertArrayNotHasKey($uri, $geholt, "{$uri} doppelt geladen");
 			$geholt[$uri] = true;
-			return ['uri' => $uri, 'calendardata' => $objekte[$uri], 'etag' => '"e"', 'classification' => $klasse];
+			return ['uri' => $uri, 'calendardata' => $objekte[$uri], 'etag' => '"e"', 'classification' => $klassen[$uri] ?? 0];
 		});
 	}
 
@@ -172,13 +173,27 @@ class KalenderServiceTest extends TestCase {
 
 	public function testListeFragtDasBackendNurPerSqlUndPrueftDenZeitraumSelbst(): void {
 		// P-KAL-02: Mit Anfang und Ende zugleich würde das Backend jedes Objekt parsen und Serien auflösen
-		// (requirePostFilter); nur mit dem Anfang filtert es allein per SQL. Den Rest prüft die App.
+		// (requirePostFilter); mit nur einer Grenze filtert es allein per SQL. Zwei Abfragen (nur Anfang, nur Ende),
+		// geladen und geparst wird nur die Schnittmenge; den genauen Zeitraum prüft die App.
 		$service = $this->service();
 		[$von, $bis] = KalenderService::zeitraum('2026-11-01', '2026-11-30');
-		$this->backend->expects($this->once())->method('calendarQuery')->with(3, $this->callback(function (array $filter) use ($von) {
-			$zeitraum = $filter['comp-filters'][0]['time-range'];
-			return $zeitraum['start'] == $von && $zeitraum['end'] === null && $filter['comp-filters'][0]['name'] === 'VEVENT';
-		}))->willReturn(['drin.ics', 'vorher.ics', 'danach.ics', 'serie-vorbei.ics']);
+		$abfragen = [];
+		$this->backend->expects($this->exactly(2))->method('calendarQuery')->willReturnCallback(
+			function (int $kalender, array $filter) use (&$abfragen, $von, $bis) {
+				$this->assertSame(3, $kalender);
+				$this->assertSame('VEVENT', $filter['comp-filters'][0]['name']);
+				$zeitraum = $filter['comp-filters'][0]['time-range'];
+				$abfragen[] = $zeitraum;
+				if ($zeitraum['start'] == $von && $zeitraum['end'] === null) {
+					// endet laut Datenbank nach $von
+					return ['drin.ics', 'vorher.ics', 'danach.ics', 'serie-vorbei.ics', 'spaeter.ics'];
+				}
+				if ($zeitraum['start'] === null && $zeitraum['end'] == $bis) {
+					// beginnt laut Datenbank vor $bis
+					return ['alt.ics', 'serie-vorbei.ics', 'danach.ics', 'vorher.ics', 'drin.ics'];
+				}
+				$this->fail('unerwarteter Filter');
+			});
 		$objekte = [
 			'drin.ics' => self::ics('drin', 'Im Zeitraum'),
 			// endet genau mit dem Beginn des Zeitraums: nicht drin (DTEND ist ausschließlich)
@@ -196,10 +211,22 @@ class KalenderServiceTest extends TestCase {
 
 		$liste = $service->termine('admin', 3, $von, $bis, '', 1, 25);
 
+		$this->assertCount(2, $abfragen);
 		$this->assertSame(['drin.ics'], self::uris($liste));
 		$this->assertSame(1, $liste['gesamt']);
-		$this->assertSame(['drin.ics', 'vorher.ics', 'danach.ics', 'serie-vorbei.ics'], $geholt, 'jedes Objekt genau einmal');
+		// nur die Schnittmenge, jedes Objekt genau einmal; alt.ics (endet vorher) und spaeter.ics (beginnt danach) nicht
+		$this->assertSame(['drin.ics', 'vorher.ics', 'danach.ics', 'serie-vorbei.ics'], $geholt);
 		$this->assertSame([], $this->protokoll);
+	}
+
+	public function testOhneTermineNachDemAnfangKeineZweiteAbfrage(): void {
+		$service = $this->service();
+		[$von, $bis] = KalenderService::zeitraum('2026-11-01', '2026-11-30');
+		$this->backend->expects($this->once())->method('calendarQuery')->willReturn([]);
+		$this->backend->expects($this->never())->method('getCalendarObject');
+		$liste = $service->termine('admin', 3, $von, $bis, '', 1, 25);
+		$this->assertSame(0, $liste['gesamt']);
+		$this->assertSame(1, $liste['seiten']);
 	}
 
 	public function testSortierungNachZeitpunktAlsZahlMitStabilerZweitsortierung(): void {
@@ -242,6 +269,53 @@ class KalenderServiceTest extends TestCase {
 		foreach (['Geheimtext', 'Planung öffnen', 'calendar_planning', 'cloud.example', 'uid-geheimnis', '4711', '2026-11-05', 'T14:00', '+01:00', 'Lot'] as $suche) {
 			$this->assertSame(0, $treffer($suche), "„{$suche}“ darf nicht treffen");
 		}
+	}
+
+	public function testSucheGanztagsOhneDenTagNachDemEnde(): void {
+		// DTEND ganztägiger Termine ist ausschließlich: ein Tag am 05.11. endet am 06.11. um 0 Uhr. Gesucht wird nach
+		// dem letzten Tag, nicht nach dem Folgetag.
+		$service = $this->service();
+		$this->objekte([
+			'eintaegig.ics' => self::termin('eintaegig', "DTSTART;VALUE=DATE:20261105\r\nDTEND;VALUE=DATE:20261106\r\n", "SUMMARY:Flohmarkt\r\n"),
+			'zweitaegig.ics' => self::termin('zweitaegig', "DTSTART;VALUE=DATE:20261110\r\nDTEND;VALUE=DATE:20261112\r\n", "SUMMARY:Messe\r\n"),
+		]);
+		[$von, $bis] = KalenderService::zeitraum('2026-11-01', '2026-11-30');
+		$treffer = fn (string $suche) => self::uris($service->termine('admin', 3, $von, $bis, $suche, 1, 25));
+
+		$this->assertSame(['eintaegig.ics'], $treffer('05.11.2026'));
+		$this->assertSame([], $treffer('06.11.2026'));
+		$this->assertSame(['zweitaegig.ics'], $treffer('10.11.2026'));
+		$this->assertSame(['zweitaegig.ics'], $treffer('11.11.2026'));
+		$this->assertSame([], $treffer('12.11.2026'));
+	}
+
+	public function testPrivateTermineImGeteiltenKalenderUnsichtbarAuchFuerSucheUndZahl(): void {
+		// Private (1) und vertrauliche (2) Termine in einem geteilten Kalender sieht nur der Eigentümer: Sie zählen
+		// nicht in „gesamt“ und sind auch über die Suche nach ihrem Titel nicht zu finden.
+		$objekte = [
+			'offen.ics' => self::ics('offen', 'Sommerfest'),
+			'privat.ics' => self::ics('privat', 'Arzttermin Eva'),
+			'vertraulich.ics' => self::ics('vertraulich', 'Vorstandssitzung intern'),
+		];
+		$klassen = ['privat.ics' => 1, 'vertraulich.ics' => 2];
+		[$von, $bis] = KalenderService::zeitraum('2026-11-01', '2026-11-30');
+
+		$service = $this->service([$this->kalenderAttrappe('3', 'planung_shared_by_admin', 'Planung', true)]);
+		$this->objekte($objekte, $klassen);
+		$liste = $service->termine('eva', 3, $von, $bis, '', 1, 25);
+		$this->assertSame(['offen.ics'], self::uris($liste));
+		$this->assertSame(1, $liste['gesamt']);
+		foreach (['Arzttermin', 'Vorstandssitzung'] as $suche) {
+			$liste = $service->termine('eva', 3, $von, $bis, $suche, 1, 25);
+			$this->assertSame([], $liste['termine'], $suche);
+			$this->assertSame(0, $liste['gesamt'], $suche);
+		}
+
+		// Im eigenen (nicht geteilten) Kalender sieht der Eigentümer alle.
+		$service = $this->service();
+		$this->objekte($objekte, $klassen);
+		$this->assertSame(3, $service->termine('admin', 3, $von, $bis, '', 1, 25)['gesamt']);
+		$this->assertSame(['privat.ics'], self::uris($service->termine('admin', 3, $von, $bis, 'Arzttermin', 1, 25)));
 	}
 
 	public function testSerieZeigtDenNaechstenTerminImZeitraum(): void {
