@@ -97,8 +97,9 @@ export async function kalenderWaehlen(kalender) {
 	await axios.put(url('/kalender/auswahl'), { kalender })
 }
 
-export async function termineLaden(parameter) {
-	return (await axios.get(url('/termine'), { params: parameter })).data
+/** Terminliste; mit `signal` (AbortController) lässt sich eine veraltete Anfrage abbrechen (P-KAL-03). */
+export async function termineLaden(parameter, { signal } = {}) {
+	return (await axios.get(url('/termine'), { params: parameter, signal })).data
 }
 
 /** Vorgeladener Termin; gilt nur für das erste `terminLaden` und höchstens VORLADEN_GUELTIG Millisekunden. */
