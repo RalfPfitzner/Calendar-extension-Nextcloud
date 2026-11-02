@@ -11,6 +11,8 @@ Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-al
 - Ein Feldschema über 64 KiB lässt sich nicht mehr speichern (vorher wurde es angenommen und beim nächsten Laden still durch die Vorgabe ersetzt).
 
 ### Behoben
+- **Ganztägige Serien** mit EXDATE oder RECURRENCE-ID als Uhrzeit mit Zeitzone (z. B. aus Outlook) zeigen ausgefallene und verschobene Termine richtig; alte Serien „Mo–Fr“, deren Beginn auf einem Wochenende liegt, fallen nicht mehr aus der Liste.
+- **Barrierefreiheit der Liste:** Spaltenzuordnung für Bildschirmleser auch auf schmalen Bildschirmen richtig; eine Fehlermeldung verschwindet, wenn man zur angezeigten Liste zurückkehrt.
 - **Terminliste ohne seitliches Scrollen:** Die Spalte „Planung“ ist ab 1280 Pixel sichtbar, auf Tablet und Handy stehen Ort, Listenfelder und Planung unter dem Titel (U-KAL-02).
 - **Serien** zeigen in der Liste den nächsten Termin, nicht mehr einen vergangenen; endlose tägliche Serien fallen auch nach vielen Jahren nicht mehr aus der Liste (U-KAL-16, P-KAL-06).
 - **Sortierung:** Termine mit verschiedenen Zeitzonen und ganztägige Termine stehen in der richtigen Reihenfolge (Q-KAL-04).
@@ -43,7 +45,7 @@ Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-al
 - **Release-Freigabe:** Der Job, der signiert und hochlädt, läuft in der Umgebung `release`. Mit Prüfer und Tag-Ruleset (Anleitung in `docs/REPO-EINSTELLUNGEN.md`) erzeugt nur noch ein Admin ein Release.
 
 ### Geändert
-- **Liste deutlich schneller:** Serien werden nicht mehr Tag für Tag durchgerechnet, jeder Termin wird nur einmal geladen und gelesen, die Kalenderliste je Anfrage einmal aufgebaut; mit 2 000 Terminen antwortet die Liste in 0,8 statt 5,6 Sekunden. Überholte Anfragen beim Tippen werden abgebrochen (P-KAL-01, P-KAL-02, P-KAL-03, P-KAL-04).
+- **Liste deutlich schneller:** Serien werden nicht mehr Tag für Tag durchgerechnet, jeder Termin wird nur einmal geladen und gelesen, die Kalenderliste je Anfrage einmal aufgebaut; mit 2 000 Terminen antwortet die Liste in 0,8 statt 5,6 Sekunden. Überholte Anfragen beim Tippen werden abgebrochen (P-KAL-01, P-KAL-02, P-KAL-03, P-KAL-04). Die Datenbank sucht mit Anfang und Ende des Zeitraums vor, gelesen werden nur Termine im Zeitraum; enge oder vergangene Zeiträume sind dadurch besonders schnell, der Speicher je Anfrage steigt etwas.
 - **Termintitel sind Links:** Mittelklick und Strg-Klick öffnen einen neuen Tab (U-KAL-07).
 - **Blättern und leere Suche:** Knöpfe mit Namen („Erste Seite“, „Seite 3“ …); eine leere Suche nennt den Suchbegriff und bietet „Suche zurücksetzen“; Laden und Trefferzahl werden angesagt (U-KAL-12, U-KAL-14, U-KAL-15).
 - **Kalenderauswahl** ohne Geburtstagskalender und Kalender anderer Apps (U-KAL-21).
