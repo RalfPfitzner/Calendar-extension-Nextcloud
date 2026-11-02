@@ -190,7 +190,7 @@ class KalenderService {
 			// demselben ETag können sich nicht mehr überholen; die zweite sieht den neuen ETag und bekommt 409.
 			$objekt = $this->objekt($kalender, $kalenderId, $objektUri);
 			if ($objekt['etag'] !== $etag) {
-				throw new PlanungException('Der Termin wurde inzwischen geändert. Bitte neu laden und die Eingaben erneut eintragen.', 409);
+				throw new PlanungException('Der Termin wurde inzwischen geändert. Es wurde nichts gespeichert; die Eingaben bleiben im Formular stehen.', 409);
 			}
 			$neu = $this->planung->schreiben($objekt['calendardata'], $planung, $this->link($kalenderId, $objektUri));
 			$this->backend->updateCalendarObject($kalenderId, $objektUri, $neu);
