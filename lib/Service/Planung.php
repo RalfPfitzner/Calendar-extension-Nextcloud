@@ -121,6 +121,7 @@ class Planung {
 		if ($termin === null) {
 			throw new PlanungException('Kein Termin im Kalenderobjekt');
 		}
+		$this->optionenPruefen($termin, $planung);
 		$jetzt = DateTimeImmutable::createFromInterface($jetzt ?? new DateTimeImmutable())->setTimezone(new DateTimeZone('UTC'));
 
 		$alterTitel = (string)($termin->SUMMARY ?? '');
@@ -153,7 +154,11 @@ class Planung {
 	}
 
 	/**
-	 * Prüft und bereinigt Formularwerte gegen das Schema: Typ, Pflicht, Länge, Optionen.
+	 * Prüft und bereinigt Formularwerte gegen das Schema: Typ, Pflicht, Länge.
+	 *
+	 * Ob ein Auswahlwert eine der Optionen ist, prüft erst schreiben(), weil nur dort der gespeicherte Wert bekannt ist:
+	 * Ein Wert, der schon so im Termin steht, bleibt gültig, auch wenn der Admin die Option inzwischen entfernt hat
+	 * (Q-KAL-09).
 	 *
 	 * @param array<string,mixed> $eingabe
 	 * @return array<string,mixed> Werte je Schlüssel; Ja/Nein-Felder als bool, alles andere als Text
@@ -209,11 +214,6 @@ class Planung {
 					throw new PlanungException("„{$label}“ muss eine Zahl sein");
 				}
 				break;
-			case 'select':
-				if (!in_array($wert, $feld['optionen'], true)) {
-					throw new PlanungException("„{$label}“: „" . mb_substr($wert, 0, 40) . '“ ist keine der Optionen');
-				}
-				break;
 			case 'date':
 				$datum = DateTimeImmutable::createFromFormat('!Y-m-d', $wert);
 				if ($datum === false || $datum->format('Y-m-d') !== $wert) {
@@ -222,6 +222,28 @@ class Planung {
 				break;
 		}
 		return $wert;
+	}
+
+	/**
+	 * Auswahlwerte müssen eine der Optionen sein oder unverändert so im Termin stehen (Q-KAL-09): Entfernt der Admin
+	 * eine Option, lässt sich ein Termin mit dem alten Wert weiter speichern, ein neu gewählter Wert muss aber in der
+	 * Liste stehen.
+	 *
+	 * @param array<string,mixed> $planung
+	 * @throws PlanungException (Code 400), wenn ein Wert weder Option noch der gespeicherte Wert ist
+	 */
+	private function optionenPruefen(VEvent $termin, array $planung): void {
+		foreach ($this->einstellungen->schema->felder as $schluessel => $feld) {
+			$wert = $planung[$schluessel] ?? '';
+			if ($feld['typ'] !== 'select' || !is_string($wert) || $wert === '' || in_array($wert, $feld['optionen'], true)) {
+				continue;
+			}
+			$eigenschaft = self::eigenschaft($schluessel);
+			$gespeichert = isset($termin->{$eigenschaft}) ? (string)$termin->{$eigenschaft}->getValue() : '';
+			if ($wert !== $gespeichert) {
+				throw new PlanungException("„{$feld['label']}“: „" . mb_substr($wert, 0, 40) . '“ ist keine der Optionen');
+			}
+		}
 	}
 
 	/**

@@ -156,13 +156,15 @@ test('Formular und Liste folgen dem geänderten Schema', async () => {
 
 	await seite.getByText('Lötworkshop Grundschule').click()
 	await seite.getByRole('heading', { name: /Planung: Lötworkshop/ }).waitFor()
-	await seite.getByLabel('Art der Veranstaltung').selectOption('Kurs')
+	// Auswahl als NcSelect (U-KAL-17): öffnen und Option wählen.
+	await seite.getByRole('combobox', { name: 'Art der Veranstaltung' }).click()
+	await seite.getByRole('option', { name: 'Kurs', exact: true }).click()
 	await seite.getByLabel('Anzahl der Teilnehmenden').fill('12')
 	await seite.getByRole('button', { name: 'Speichern' }).click()
 	await seite.getByText('Gespeichert.').waitFor()
 	await seite.reload()
 	await seite.getByRole('heading', { name: /Planung: Lötworkshop/ }).waitFor()
-	assert.equal(await seite.getByLabel('Art der Veranstaltung').inputValue(), 'Kurs')
+	assert.equal((await seite.locator('.formular__feld', { has: seite.getByText('Art der Veranstaltung', { exact: true }) }).locator('.vs__selected').innerText()).trim(), 'Kurs')
 
 	await seite.getByRole('button', { name: /Zur Liste/ }).click()
 	const zeile = seite.locator('tr', { hasText: 'Lötworkshop Grundschule' })
