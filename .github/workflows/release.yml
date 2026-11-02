@@ -35,8 +35,47 @@ jobs:
     needs: version
     uses: ./.github/workflows/ci.yml
 
-  paket:
+  # Bauen ohne Schreibrechte und ohne OIDC (STANDARDS A2.9, S-KAL-04): npm ci und der Build führen fremden Code
+  # aus; der hat hier nur ein Token mit contents: read und kein id-token. Das Paket geht als Artefakt weiter.
+  # Ohne npm-Cache, damit kein Cache-Eintrag aus einem anderen Lauf in das Release gelangt.
+  bauen:
     needs: [version, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      datei: ${{ steps.paket.outputs.datei }}
+      summe: ${{ steps.paket.outputs.summe }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          # setup-node schaltet den Cache sonst bei einem packageManager-Feld von selbst ein
+          package-manager-cache: false
+      - run: npm ci
+      - name: Paket bauen
+        id: paket
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          tools/paket.sh
+          datei="calendar_planning-${TAG#v}.tar.gz"
+          test -f "build/$datei" || { echo "::error title=Paket::build/$datei fehlt"; exit 1; }
+          echo "datei=$datei" >> "$GITHUB_OUTPUT"
+          echo "summe=$(sha256sum "build/$datei" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: paket
+          path: build/${{ steps.paket.outputs.datei }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Attestieren und an den Release-Entwurf hängen: nur dieser Job hat Schreibrechte und id-token. Er führt keinen
+  # Code aus dem Repository aus (kein Checkout, kein npm), sondern nimmt nur das Artefakt aus „bauen“.
+  veroeffentlichen:
+    needs: [version, bauen]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -45,39 +84,48 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: tools/paket.sh
+          name: paket
+          path: paket
+      # Genau eine Datei mit dem erwarteten Namen und der Summe, die „bauen“ berechnet hat: attestiert und
+      # hochgeladen wird damit sicher das Paket aus diesem Lauf und nichts daneben.
+      - name: Paket prüfen
+        env:
+          DATEI: ${{ needs.bauen.outputs.datei }}
+          SUMME: ${{ needs.bauen.outputs.summe }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test "$DATEI" = "calendar_planning-${TAG#v}.tar.gz" || { echo "::error title=Paket::Dateiname $DATEI passt nicht zu $TAG"; exit 1; }
+          test "$(find paket -type f | wc -l)" -eq 1 || { echo "::error title=Paket::Artefakt enthält nicht genau eine Datei"; find paket; exit 1; }
+          test "$(sha256sum "paket/$DATEI" | cut -d' ' -f1)" = "$SUMME" || { echo "::error title=Paket::SHA-256 weicht vom Bau ab"; exit 1; }
       # Belegt, dass genau dieses Paket aus diesem Workflow-Lauf auf diesem Commit stammt.
       # Prüfen: gh attestation verify calendar_planning-<version>.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud
       - name: Build-Provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: build/calendar_planning-*.tar.gz
+          subject-path: paket/${{ needs.bauen.outputs.datei }}
+      # Nur an einen Entwurf hängen oder einen neuen anlegen. Ein schon veröffentlichtes Release bleibt unverändert
+      # (ein erneuter Lauf baute ein anderes Paket mit anderer Summe als das, was schon heruntergeladen wurde).
       - name: An Release-Entwurf hängen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
+          DATEI: ${{ needs.bauen.outputs.datei }}
+          SUMME: ${{ needs.bauen.outputs.summe }}
         run: |
-          datei="build/calendar_planning-${TAG#v}.tar.gz"
-          summe="$(sha256sum "$datei" | cut -d' ' -f1)"
           {
             echo "Änderungen siehe CHANGELOG.md, Abschnitt ${TAG#v}."
             echo
-            echo "SHA-256 \`$(basename "$datei")\`: \`$summe\`"
+            echo "SHA-256 \`$DATEI\`: \`$SUMME\`"
             echo
-            echo "Herkunft prüfen: \`gh attestation verify $(basename "$datei") --repo $REPO\`"
-          } > build/release-notes.md
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$datei" --clobber
-            gh release edit "$TAG" --notes-file build/release-notes.md
+            echo "Herkunft prüfen: \`gh attestation verify $DATEI --repo $GH_REPO\`"
+          } > release-notes.md
+          if entwurf="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            test "$entwurf" = "true" || { echo "::error title=Release::$TAG ist schon veröffentlicht, das Paket wird nicht ersetzt"; exit 1; }
+            gh release upload "$TAG" "paket/$DATEI" --clobber
+            gh release edit "$TAG" --notes-file release-notes.md
           else
-            gh release create "$TAG" "$datei" --draft --title "$TAG" --notes-file build/release-notes.md
+            gh release create "$TAG" "paket/$DATEI" --draft --verify-tag --title "$TAG" --notes-file release-notes.md
           fi

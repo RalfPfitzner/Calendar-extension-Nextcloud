@@ -5,12 +5,16 @@
 #                                         andere mit NC_NAME und NC_PORT, z. B. für parallele Arbeitskopien)
 #         NC_VERSION=34.0.5 KALENDER_VERSION=6.6.3 tools/test-nextcloud.sh   (andere Hauptversion)
 #         tools/test-nextcloud.sh --stopp  (Container entfernen)
+# Image und Kalender-App sind festgelegt (STANDARDS A2.10): das Image per Digest, die Kalender-App per SHA-256,
+# beide je Version in nc_digest und kalender_summe unten. Eine neue Version dort eintragen (Werte ermitteln mit
+#   docker buildx imagetools inspect nextcloud:<version>-apache
+#   curl -fsSL <Release-URL der Kalender-App> | sha256sum)
+# oder ausnahmsweise NC_IMAGE bzw. KALENDER_SHA256 setzen.
 set -euo pipefail
 
 NAME=${NC_NAME:-calplan-nc}
 PORT=${NC_PORT:-8080}
 NC_VERSION=${NC_VERSION:-35.0.2}
-NC_IMAGE=nextcloud:$NC_VERSION-apache
 KALENDER_VERSION=${KALENDER_VERSION:-6.6.4}
 KALENDER_APP=https://github.com/nextcloud-releases/calendar/releases/download/v$KALENDER_VERSION/calendar-v$KALENDER_VERSION.tar.gz
 # Impersonate mit kaputtem Admin-Template (`<div id="impersonate"</div>`, in 5.0.0 für 34 und 6.0.0 für 35): Regression
@@ -23,9 +27,46 @@ EVA_PASS=Eva-Test-12345
 APP=$(cd "$(dirname "$0")/.." && pwd)
 
 if [[ ${1:-} == --stopp ]]; then
-	docker rm -f "$NAME" >/dev/null 2>&1 || true
+	docker rm -f -v "$NAME" >/dev/null 2>&1 || true
 	exit 0
 fi
+
+# pruefsumme DATEI SHA256: prüft vor dem Entpacken oder Verwenden (sha256sum unter Linux und Git Bash, shasum unter macOS)
+pruefsumme() {
+	if command -v sha256sum >/dev/null; then echo "$2  $1" | sha256sum -c --quiet -
+	else echo "$2  $1" | shasum -a 256 -c --quiet -; fi
+}
+# Digest des Images je Nextcloud-Version (Stand 02.11.2026, Version und Digest immer gemeinsam ändern).
+# case statt assoziativer Arrays, damit das Skript auch mit Bash 3 (macOS) läuft.
+nc_digest() {
+	case $1 in
+		34.0.5) echo sha256:515c072ea1cf82ece3503f301fdf75dd5a7148abcc8fa10aaefd5ec56643b703 ;;
+		35.0.2) echo sha256:e0b1a2af52c82c07b7a0e8e59878bd8769e704447734d5d238a836982f51b9c8 ;;
+	esac
+}
+# SHA-256 des Release-Pakets der Kalender-App je Version
+kalender_summe() {
+	case $1 in
+		6.6.3) echo bda8f38c609b2182533887f67eacb543edf437066d0356912ac6324c94743080 ;;
+		6.6.4) echo 0557b6b5852a467cf3f746e59d56478d227f78bf7a66357b30dfc10cae4c7e3c ;;
+	esac
+}
+# SHA-256 des Release-Pakets von Impersonate je Version
+impersonate_summe() {
+	case $1 in
+		5.0.0) echo e9b85d6489434af2d05f1618839bcfd9859dbc6b7be580148592f511a448ed66 ;;
+		6.0.0) echo 03fe448867e07bf4e6e3dd95f3550f8a07b5c89683a2baf1382b1cd5cf0a17bd ;;
+	esac
+}
+if [[ -z ${NC_IMAGE:-} ]]; then
+	digest=$(nc_digest "$NC_VERSION")
+	[[ -n $digest ]] || { echo "Kein Digest für Nextcloud $NC_VERSION hinterlegt: in nc_digest eintragen oder NC_IMAGE setzen" >&2; exit 1; }
+	NC_IMAGE=nextcloud:$NC_VERSION-apache@$digest
+fi
+KALENDER_SHA256=${KALENDER_SHA256:-$(kalender_summe "$KALENDER_VERSION")}
+[[ -n $KALENDER_SHA256 ]] || { echo "Keine Prüfsumme für die Kalender-App $KALENDER_VERSION hinterlegt: in kalender_summe eintragen oder KALENDER_SHA256 setzen" >&2; exit 1; }
+IMPERSONATE_SHA256=${IMPERSONATE_SHA256:-$(impersonate_summe "$IMPERSONATE_VERSION")}
+[[ -n $IMPERSONATE_SHA256 ]] || { echo "Keine Prüfsumme für Impersonate $IMPERSONATE_VERSION hinterlegt: in impersonate_summe eintragen oder IMPERSONATE_SHA256 setzen" >&2; exit 1; }
 
 [[ -f $APP/js/calendar_planning-main.mjs ]] || { echo "Erst die Oberfläche bauen: npm ci && npm run build" >&2; exit 1; }
 
@@ -34,7 +75,8 @@ fi
 hostpfad() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
 docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
 
-docker rm -f "$NAME" >/dev/null 2>&1 || true
+# -v entfernt auch das anonyme Volume des Images (/var/www/html); sonst bleibt je Lauf eines liegen und füllt die Platte.
+docker rm -f -v "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" -p "$PORT:80" \
 	-e SQLITE_DATABASE=nc -e NEXTCLOUD_ADMIN_USER=admin -e NEXTCLOUD_ADMIN_PASSWORD="$ADMIN_PASS" \
 	-e NEXTCLOUD_TRUSTED_DOMAINS="localhost 127.0.0.1" \
@@ -48,17 +90,20 @@ for _ in $(seq 1 60); do
 done
 occ status | grep -q 'installed: true' || { docker logs "$NAME" | tail -30; exit 1; }
 
-# Kalender-App und Impersonate aus dem GitHub-Release (der App-Store ist nicht überall erreichbar)
+# Kalender-App und Impersonate aus dem GitHub-Release (der App-Store ist nicht überall erreichbar), vor dem Entpacken
+# per SHA-256 geprüft
 fremdeApp() {
 	local tmp
 	tmp=$(mktemp -d)
-	curl -fsSL "$2" | tar xz -C "$tmp"
+	curl -fsSL "$2" -o "$tmp/$1.tar.gz"
+	pruefsumme "$tmp/$1.tar.gz" "$3" || { echo "Prüfsumme von $1 stimmt nicht" >&2; rm -rf "$tmp"; exit 1; }
+	tar xzf "$tmp/$1.tar.gz" -C "$tmp"
 	docker cp "$(hostpfad "$tmp")/$1" "$NAME:/var/www/html/custom_apps/"
 	rm -rf "$tmp"
 	docker exec "$NAME" chown -R www-data:www-data "/var/www/html/custom_apps/$1"
 }
-fremdeApp calendar "$KALENDER_APP"
-fremdeApp impersonate "$IMPERSONATE_APP"
+fremdeApp calendar "$KALENDER_APP" "$KALENDER_SHA256"
+fremdeApp impersonate "$IMPERSONATE_APP" "$IMPERSONATE_SHA256"
 
 occ app:disable firstrunwizard >/dev/null
 occ app:enable calendar

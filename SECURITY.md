@@ -2,20 +2,23 @@
 
 ## Unterstützte Versionen
 
-Korrekturen gibt es nur für die jeweils neueste Version. Ältere Tags bleiben stehen, werden aber nicht gepflegt.
+Korrekturen gibt es nur für die jeweils neueste Version der App (siehe `CHANGELOG.md`), und nur für die Nextcloud-Versionen, die sie unterstützt. Ältere Tags bleiben stehen, werden aber nicht gepflegt.
 
-| Version | Unterstützt |
-|---|---|
-| neueste 0.x | ja |
-| alles davor | nein |
+| App `calendar_planning` | Nextcloud | Unterstützt |
+|---|---|---|
+| neueste 1.x | 34 und 35 | ja |
+| ältere 1.x | 34 und 35 | nein, bitte auf die neueste 1.x aktualisieren |
+| 0.x (bis 0.3 als `msp_planung`) | – | nein |
 
 ## Eine Lücke melden
 
-Über **[GitHub Security Advisories](https://github.com/RalfPfitzner/Calendar-extension-Nextcloud/security/advisories/new)**, das ist privat. Kein öffentliches Issue für eine vermutete Lücke. Falls der Link nicht funktioniert (die private Meldung muss in den Repo-Einstellungen eingeschaltet sein), an die Adresse in `appinfo/info.xml`.
+Über **[GitHub Security Advisories](https://github.com/RalfPfitzner/Calendar-extension-Nextcloud/security/advisories/new)** („Report a vulnerability“ im Reiter „Security“), das ist privat. Kein öffentliches Issue für eine vermutete Lücke. Falls die private Meldung einmal nicht geht, eine Mail an die Adresse im Feld `author` von `appinfo/info.xml` mit der Bitte um einen vertraulichen Kanal; darin noch keine Details.
+
+Pakete aus den Releases sind attestiert. Ob ein Paket aus diesem Repository stammt, zeigt `gh attestation verify calendar_planning-<version>.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`; die SHA-256 steht in den Release-Notes.
 
 Bitte angeben:
 
-- Version der App und der Nextcloud
+- Version der App (`calendar_planning`) und der Nextcloud
 - was ein Angreifer damit gewinnt, nicht nur, was sich falsch verhält
 - Schritte zum Nachstellen, am besten gegen eine frische Test-Nextcloud (`tools/test-nextcloud.sh`)
 
