@@ -13,7 +13,11 @@ use OCP\Calendar\ICalendarIsShared;
 use OCP\Calendar\ICalendarIsWritable;
 use OCP\Calendar\IManager;
 use OCP\Config\IUserConfig;
+use OCP\DB\Exception as DbException;
 use OCP\IURLGenerator;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
+use Psr\Log\LoggerInterface;
 
 /**
  * Lesen und Schreiben der Termine über das Kalender-Backend von Nextcloud.
@@ -27,6 +31,18 @@ class KalenderService {
 	/** Klassifizierung „öffentlich“ im CalDAV-Backend. */
 	private const KLASSE_OEFFENTLICH = 0;
 
+	/**
+	 * Zone der Oberfläche: Tagesgrenzen der Liste, Anzeige und „Floating“-Zeiten (ohne TZID) gelten in dieser Zone
+	 * (src/datum.js zeigt ebenfalls in Europe/Berlin an). Siehe docs/KONZEPT.md, „Offen“.
+	 */
+	public const ZONE = 'Europe/Berlin';
+
+	/** Präfix der Sperre je Termin beim Speichern; dahinter ein Hash, die Schlüssel der Sperren sind höchstens 64 Zeichen lang. */
+	private const SPERRE = 'calendar_planning/';
+
+	/** Meldung, wenn eine andere Anfrage den Termin gerade speichert (Sperre belegt): kurz warten genügt. */
+	public const GERADE_GESPEICHERT = 'Der Termin wird gerade gespeichert. Bitte gleich noch einmal versuchen.';
+
 	public function __construct(
 		private IManager $kalenderManager,
 		private CalDavBackend $backend,
@@ -34,6 +50,8 @@ class KalenderService {
 		private IUserConfig $userConfig,
 		private Planung $planung,
 		private Einstellungen $einstellungen,
+		private ILockingProvider $sperren,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -93,17 +111,18 @@ class KalenderService {
 		$suche = mb_strtolower(trim($suche));
 		$termine = [];
 		foreach ($objekte as $objekt) {
-			if (!$this->sichtbar($kalender, $objekt)) {
+			try {
+				$eintrag = $this->eintrag($kalender, $kalenderId, $objekt, $von, $bis, $suche);
+			} catch (\Throwable $e) {
+				// Ein defekter Termin (z. B. ungültiges iCalendar aus einem anderen Programm) darf die Liste nicht
+				// scheitern lassen: überspringen, im Protokoll nur Klasse, Code und Hash des Termins.
+				$uri = is_string($objekt['uri'] ?? null) ? $objekt['uri'] : null;
+				$this->logger->warning(Protokoll::text($e, $kalenderId, $uri, 'Termin in der Liste übersprungen,'), ['app' => Application::APP_ID]);
 				continue;
 			}
-			$daten = $this->planung->lesen($objekt['calendardata'], $von, $bis);
-			if ($daten === null) {
-				continue;
+			if ($eintrag !== null) {
+				$termine[] = $eintrag;
 			}
-			if ($suche !== '' && !str_contains(mb_strtolower(implode("\n", array_filter($daten, 'is_string'))), $suche)) {
-				continue;
-			}
-			$termine[] = $this->kurz($kalenderId, $objekt['uri'], $daten);
 		}
 		usort($termine, fn ($a, $b) => [$a['beginn'] ?? '', $a['titel']] <=> [$b['beginn'] ?? '', $b['titel']]);
 
@@ -120,11 +139,31 @@ class KalenderService {
 		];
 	}
 
+	/**
+	 * Listeneintrag zu einem Kalenderobjekt, null wenn unsichtbar, kein Termin oder nicht zur Suche passend.
+	 *
+	 * @param array<string,mixed> $objekt
+	 * @return array<string,mixed>|null
+	 */
+	private function eintrag(ICalendar $kalender, int $kalenderId, array $objekt, DateTimeImmutable $von, DateTimeImmutable $bis, string $suche): ?array {
+		if (!$this->sichtbar($kalender, $objekt)) {
+			return null;
+		}
+		$daten = $this->planung->lesen($objekt['calendardata'], $von, $bis, new DateTimeZone(self::ZONE));
+		if ($daten === null) {
+			return null;
+		}
+		if ($suche !== '' && !str_contains(mb_strtolower(implode("\n", array_filter($daten, 'is_string'))), $suche)) {
+			return null;
+		}
+		return $this->kurz($kalenderId, $objekt['uri'], $daten);
+	}
+
 	/** @return array<string,mixed> */
 	public function termin(string $uid, int $kalenderId, string $objektUri): array {
 		$kalender = $this->kalenderFuer($uid, $kalenderId);
 		$objekt = $this->objekt($kalender, $kalenderId, $objektUri);
-		$daten = $this->planung->lesen($objekt['calendardata']);
+		$daten = $this->planung->lesen($objekt['calendardata'], null, null, new DateTimeZone(self::ZONE));
 		if ($daten === null) {
 			throw new PlanungException('Der Eintrag ist kein Termin', 404);
 		}
@@ -146,13 +185,78 @@ class KalenderService {
 			throw new PlanungException('In diesen Kalender darfst du nicht schreiben', 403);
 		}
 		$planung = $this->planung->pruefen($eingabe);
-		$objekt = $this->objekt($kalender, $kalenderId, $objektUri);
-		if ($objekt['etag'] !== $etag) {
-			throw new PlanungException('Der Termin wurde inzwischen geändert. Bitte neu laden und die Eingaben erneut eintragen.', 409);
-		}
-		$neu = $this->planung->schreiben($objekt['calendardata'], $planung, $this->link($kalenderId, $objektUri));
-		$this->backend->updateCalendarObject($kalenderId, $objektUri, $neu);
+		$this->gesperrt($kalenderId, $objektUri, function () use ($kalender, $kalenderId, $objektUri, $etag, $planung) {
+			// Lesen, ETag vergleichen und Schreiben unter derselben Sperre (S-KAL-03, Q-KAL-10): Zwei Speicherungen mit
+			// demselben ETag können sich nicht mehr überholen; die zweite sieht den neuen ETag und bekommt 409.
+			$objekt = $this->objekt($kalender, $kalenderId, $objektUri);
+			if ($objekt['etag'] !== $etag) {
+				throw new PlanungException('Der Termin wurde inzwischen geändert. Bitte neu laden und die Eingaben erneut eintragen.', 409);
+			}
+			$neu = $this->planung->schreiben($objekt['calendardata'], $planung, $this->link($kalenderId, $objektUri));
+			$this->backend->updateCalendarObject($kalenderId, $objektUri, $neu);
+		});
 		return $this->termin($uid, $kalenderId, $objektUri);
+	}
+
+	/**
+	 * Führt $schritt unter einer exklusiven Sperre für genau diesen Termin aus.
+	 *
+	 * Die Sperre kommt aus dem Sperrdienst von Nextcloud (Datenbank oder Memcache, je nach `memcache.locking`) und
+	 * wartet nicht: Hält eine andere Anfrage sie gerade, ist der Termin mitten im Speichern, also 409 mit der Bitte,
+	 * es gleich noch einmal zu versuchen. Mit `filelocking.enabled = false` sperrt Nextcloud nichts (der Sperrdienst
+	 * ist dann ein Platzhalter); es bleibt der ETag-Vergleich. CalDavBackend selbst bietet kein bedingtes Ändern;
+	 * Schreibzugriffe anderer Programme über CalDAV nimmt die Sperre nicht mit (dort prüft Sabre If-Match ebenso
+	 * ohne Sperre).
+	 */
+	private function gesperrt(int $kalenderId, string $objektUri, callable $schritt): void {
+		// md5 nur als kurzer Schlüssel (wie Nextcloud bei Dateisperren), nicht zum Schutz von irgendetwas.
+		$schluessel = self::SPERRE . md5($kalenderId . '/' . $objektUri);
+		try {
+			self::beiSperreWiederholen(fn () => $this->sperren->acquireLock($schluessel, ILockingProvider::LOCK_EXCLUSIVE, 'Kalender-Planung: Termin speichern'));
+		} catch (LockedException) {
+			throw new PlanungException(self::GERADE_GESPEICHERT, 409);
+		} catch (DbException $e) {
+			if (!self::istSperre($e)) {
+				throw $e;
+			}
+			throw new PlanungException(self::GERADE_GESPEICHERT, 409);
+		}
+		try {
+			// Der Schritt ist als Ganzes atomar (updateCalendarObject läuft in einer Transaktion) und prüft den ETag
+			// selbst; unter der Sperre darf er nach einer abgebrochenen Transaktion also neu laufen.
+			self::beiSperreWiederholen($schritt);
+		} finally {
+			// Die Freigabe darf weder das Ergebnis noch den Fehler des Schritts überschreiben. Scheitert sie, läuft
+			// die Sperre im Sperrdienst von selbst ab (TTL); hier nur ins Protokoll, ohne Inhalte.
+			try {
+				self::beiSperreWiederholen(fn () => $this->sperren->releaseLock($schluessel, ILockingProvider::LOCK_EXCLUSIVE));
+			} catch (\Throwable $e) {
+				$this->logger->warning(Protokoll::text($e, $kalenderId, $objektUri, 'Sperre nicht freigegeben,'), ['app' => Application::APP_ID]);
+			}
+		}
+	}
+
+	private static function istSperre(DbException $e): bool {
+		return in_array($e->getReason(), [DbException::REASON_LOCK_WAIT_TIMEOUT, DbException::REASON_DEADLOCK], true);
+	}
+
+	/**
+	 * Wiederholt $schritt, wenn die Datenbank ihn wegen einer Sperre oder eines Deadlocks abbricht.
+	 *
+	 * Bei SQLite sperrt jedes Schreiben die ganze Datenbank; zwei gleichzeitige Speicherungen (auch die Sperre der
+	 * anderen Anfrage im Sperrdienst) brechen sich dort sonst mit „database is locked“ gegenseitig ab.
+	 */
+	private static function beiSperreWiederholen(callable $schritt): mixed {
+		for ($versuch = 1; ; $versuch++) {
+			try {
+				return $schritt();
+			} catch (DbException $e) {
+				if (!self::istSperre($e) || $versuch >= 5) {
+					throw $e;
+				}
+				usleep(50_000 * $versuch);
+			}
+		}
 	}
 
 	/** Adresse des Formulars zu einem Termin, wie sie in der Beschreibung steht. */
@@ -243,7 +347,7 @@ class KalenderService {
 
 	public static function zeitraum(?string $von, ?string $bis): array {
 		// Tagesgrenzen in deutscher Zeit; die App ist bisher einsprachig deutsch (siehe docs/KONZEPT.md, „Offen“).
-		$zone = new DateTimeZone('Europe/Berlin');
+		$zone = new DateTimeZone(self::ZONE);
 		$start = self::datum($von) ?? new DateTimeImmutable('today -30 days', $zone);
 		// „bis“ zählt mit: der Zeitraum endet am Ende dieses Tages.
 		$ende = self::datum($bis)?->modify('+1 day') ?? $start->modify('+13 months');
@@ -260,7 +364,7 @@ class KalenderService {
 		if ($wert === null || $wert === '') {
 			return null;
 		}
-		$datum = DateTimeImmutable::createFromFormat('!Y-m-d', $wert, new DateTimeZone('Europe/Berlin'));
+		$datum = DateTimeImmutable::createFromFormat('!Y-m-d', $wert, new DateTimeZone(self::ZONE));
 		if ($datum === false || $datum->format('Y-m-d') !== $wert) {
 			throw new PlanungException("Ungültiges Datum „{$wert}“");
 		}

@@ -8,6 +8,7 @@ use OCA\CalendarPlanning\AppInfo\Application;
 use OCA\CalendarPlanning\Service\Einstellungen;
 use OCA\CalendarPlanning\Service\EinstellungenSpeicher;
 use OCA\CalendarPlanning\Service\PlanungException;
+use OCA\CalendarPlanning\Service\Protokoll;
 use OCA\CalendarPlanning\Service\Schema;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -46,16 +47,24 @@ class AdminController extends Controller {
 		]);
 	}
 
-	/** @param array<string,mixed> $schema */
+	/**
+	 * Speichert das Schema. `entfernt` nennt die Felder des bisherigen Schemas, deren Schlüssel nun fehlt (Q-KAL-01):
+	 * Ihre erfassten Werte bleiben im Termin, das Formular zeigt sie aber nicht mehr. Ablehnen lässt sich das nicht
+	 * sinnvoll (Felder dürfen wegfallen), und ob es Werte gibt, wüsste nur ein Durchgang durch alle Kalender aller
+	 * Konten; die Oberfläche fragt deshalb vor dem Speichern nach, der Server meldet zurück.
+	 *
+	 * @param array<string,mixed> $schema
+	 */
 	#[UserRateLimit(limit: 30, period: 60)]
 	public function schemaSpeichern(array $schema): JSONResponse {
 		return $this->ausfuehren(function () use ($schema) {
+			$alt = $this->einstellungen->schema;
 			$neu = $this->speicher->schemaSpeichern($schema);
 			$this->protokollieren('Kalender-Planung: Feldschema geändert (%s Abschnitte, %s Felder)', [
 				'abschnitte' => count($neu->abschnitte),
 				'felder' => count($neu->felder),
 			]);
-			return ['schema' => $neu->alsArray()];
+			return ['schema' => $neu->alsArray(), 'entfernt' => $alt->fehlendIn($neu)];
 		});
 	}
 
@@ -87,11 +96,12 @@ class AdminController extends Controller {
 		} catch (PlanungException $e) {
 			$status = $e->getCode() === Http::STATUS_INTERNAL_SERVER_ERROR ? Http::STATUS_INTERNAL_SERVER_ERROR : Http::STATUS_BAD_REQUEST;
 			if ($status === Http::STATUS_INTERNAL_SERVER_ERROR) {
-				$this->logger->error('Kalender-Planung: ' . $e->getMessage());
+				$this->logger->error(Protokoll::text($e), ['app' => Application::APP_ID]);
 			}
 			return new JSONResponse(['fehler' => $e->getMessage()], $status);
 		} catch (\Throwable $e) {
-			$this->logger->error('Kalender-Planung: ' . $e->getMessage(), ['exception' => $e]);
+			// Wie im ApiController ohne Meldung und ohne Ausnahme-Objekt (S-KAL-01): Das Schema enthält Admin-Texte.
+			$this->logger->error(Protokoll::text($e), ['app' => Application::APP_ID]);
 			return new JSONResponse(['fehler' => 'Interner Fehler, Details im Nextcloud-Protokoll'], 500);
 		}
 	}

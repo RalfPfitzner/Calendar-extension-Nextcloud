@@ -324,4 +324,181 @@ class PlanungTest extends TestCase {
 		$this->assertArrayNotHasKey('fremd', $planung);
 		$this->assertArrayNotHasKey('END:VEVENT', $planung);
 	}
+
+	// Q-KAL-03: nur die eigene Link-Zeile wird ersetzt.
+
+	public function testLinkEinfuegenLaesstFremdeZeilenMitGleichemPraefix(): void {
+		$planung = new Planung(new Einstellungen('', '', 'Info:'));
+		$link = 'https://cloud.example/apps/calendar_planning/?kalender=1&termin=a.ics';
+		$ics = self::ics("DESCRIPTION:Info: Schlüssel beim Hausmeister\\nInfo:Treffpunkt am Tor\r\n");
+		$neu = $planung->schreiben($ics, $this->eingabe([], $planung), $link);
+		$zeilen = explode("\n", $planung->lesen($neu)['beschreibung']);
+		$this->assertContains('Info: Schlüssel beim Hausmeister', $zeilen);
+		$this->assertContains('Info:Treffpunkt am Tor', $zeilen);
+		$this->assertCount(1, array_filter($zeilen, fn ($z) => $z === "Info: {$link}"));
+		// Ein zweites Speichern ändert nichts mehr.
+		$this->assertSame($planung->lesen($neu)['beschreibung'], $planung->lesen($planung->schreiben($neu, $this->eingabe([], $planung), $link))['beschreibung']);
+	}
+
+	public function testAlterLinkMitAltemLinktextWirdErsetzt(): void {
+		$planung = new Planung(new Einstellungen('', '', 'Info:'));
+		$link = 'https://cloud.example/apps/calendar_planning/?kalender=1&termin=a.ics';
+		$ics = self::ics("DESCRIPTION:Mitbringen: Laptop\\n\\nPlanung öffnen: https://alt.example/apps/calendar_planning/?kalender=1&termin=a.ics\r\n");
+		$beschreibung = $planung->lesen($planung->schreiben($ics, $this->eingabe([], $planung), $link))['beschreibung'];
+		$this->assertStringNotContainsString('alt.example', $beschreibung);
+		$this->assertSame(1, substr_count($beschreibung, $link));
+		$this->assertSame("Mitbringen: Laptop\n\nInfo: {$link}", $beschreibung);
+	}
+
+	public function testNutzertextVorFremderPlanungsadresseBleibt(): void {
+		$link = 'https://cloud.example/apps/calendar_planning/?kalender=1&termin=a.ics';
+		$fremd = 'Siehe auch: https://cloud.example/apps/calendar_planning/?kalender=1&termin=b.ics';
+		$ics = self::ics("DESCRIPTION:Mitbringen: Laptop\\n{$fremd}\r\n");
+		$beschreibung = $this->planung->lesen($this->planung->schreiben($ics, $this->eingabe(), $link))['beschreibung'];
+		$this->assertSame("Mitbringen: Laptop\n{$fremd}\n\nPlanung öffnen: {$link}", $beschreibung);
+		// Auch eine fremde Zeile mit Linktext und Planungs-Adresse, aber Text dahinter, gehört dem Nutzer.
+		$mitZusatz = "Planung öffnen: https://alt.example/apps/calendar_planning/?kalender=1&termin=a.ics (alt)";
+		$ics = self::ics("DESCRIPTION:{$mitZusatz}\r\n");
+		$beschreibung = $this->planung->lesen($this->planung->schreiben($ics, $this->eingabe(), $link))['beschreibung'];
+		$this->assertSame("{$mitZusatz}\n\nPlanung öffnen: {$link}", $beschreibung);
+	}
+
+	public function testGemerkteLinkZeileWirdErsetztAuchMitFruehererAdresse(): void {
+		$alt = 'https://alt.example/apps/calendar_planning/?kalender=1&termin=a.ics';
+		$neu = 'https://neu.example/apps/calendar_planning/?kalender=1&termin=a.ics';
+		$planung = new Planung(new Einstellungen('', '', 'Zum Formular:'));
+		$einmal = $planung->schreiben(self::ics("DESCRIPTION:Mitbringen: Laptop\r\n"), $this->eingabe([], $planung), $alt);
+		$this->assertSame("Zum Formular: {$alt}", (string)Reader::read($einmal)->VEVENT->{Planung::EIGENSCHAFT_LINK});
+		// Linktext und Adresse ändern sich: die gemerkte Zeile wird ersetzt, an derselben Stelle.
+		$andere = new Planung(new Einstellungen('', '', 'Info:'));
+		$nachher = $andere->schreiben($einmal, $this->eingabe([], $andere), $neu);
+		$this->assertSame("Mitbringen: Laptop\n\nInfo: {$neu}", $andere->lesen($nachher)['beschreibung']);
+		$this->assertSame("Info: {$neu}", (string)Reader::read($nachher)->VEVENT->{Planung::EIGENSCHAFT_LINK});
+		// Mit gemerkter Zeile gilt eine andere Zeile mit Vorgabe-Linktext und App-Adresse nicht als eigene.
+		$kopie = "Planung öffnen: {$alt}";
+		$ics = self::ics("DESCRIPTION:Info: {$neu}\\n{$kopie}\r\nX-CALPLAN-LINK:Info: {$neu}\r\n");
+		$this->assertSame("Info: {$neu}\n{$kopie}", $andere->lesen($andere->schreiben($ics, $this->eingabe([], $andere), $neu))['beschreibung']);
+	}
+
+	public function testDoppelteEigeneLinkZeilenWerdenEine(): void {
+		$link = 'https://cloud.example/apps/calendar_planning/?kalender=1&termin=a.ics';
+		$alt = 'https://alt.example/apps/calendar_planning/?kalender=1&termin=a.ics';
+		$ics = self::ics("DESCRIPTION:Planung öffnen: {$alt}\\nMitte\\nPlanung öffnen: {$link}\r\n");
+		$beschreibung = $this->planung->lesen($this->planung->schreiben($ics, $this->eingabe(), $link))['beschreibung'];
+		$this->assertSame("Planung öffnen: {$link}\nMitte", $beschreibung);
+	}
+
+	public function testBeschreibungMitCrLfBleibtUnveraendert(): void {
+		// Die Link-Zeile steht schon da, nicht am Ende, mit \r\n-Zeilenenden (wie manche Programme schreiben).
+		// Früher fiel der exakte Vergleich an „…\r“ durch, die Zeile wanderte ans Ende.
+		$link = 'https://cloud.example/apps/calendar_planning/?kalender=1&termin=a.ics';
+		$ics = self::ics("DESCRIPTION:Planung öffnen: {$link}\r\\n\r\\nMitbringen: Laptop\r\n");
+		$vorher = (string)Reader::read($ics)->VEVENT->DESCRIPTION;
+		$this->assertSame("Planung öffnen: {$link}\r\n\r\nMitbringen: Laptop", $vorher);
+		$nachher = $this->planung->schreiben($ics, $this->eingabe(), $link);
+		// sabre/vobject schreibt Umbrüche als \n; Reihenfolge und Inhalt bleiben.
+		$this->assertSame("Planung öffnen: {$link}\n\nMitbringen: Laptop", $this->planung->lesen($nachher)['beschreibung']);
+
+	}
+
+	// Q-KAL-05: Floating-Zeiten gelten als Ortszeit.
+
+	public function testFloatingZeitGiltAlsOrtszeit(): void {
+		$ics = str_replace(
+			["DTSTART;TZID=Europe/Berlin:20261105T140000", "DTEND;TZID=Europe/Berlin:20261105T170000"],
+			["DTSTART:20261105T140000", "DTEND:20261105T170000"],
+			self::ics(),
+		);
+		$daten = $this->planung->lesen($ics, null, null, new DateTimeZone('Europe/Berlin'));
+		$this->assertSame('2026-11-05T14:00:00+01:00', $daten['beginn']);
+		$this->assertSame('2026-11-05T17:00:00+01:00', $daten['ende']);
+		// Sommerzeit: dieselbe Wanduhrzeit, anderer Abstand zu UTC.
+		$sommer = str_replace('202611', '202607', $ics);
+		$this->assertSame('2026-07-05T14:00:00+02:00', $this->planung->lesen($sommer, null, null, new DateTimeZone('Europe/Berlin'))['beginn']);
+		// Mit Zeitraum gilt dessen Zone, auch ohne eigene Angabe.
+		$zone = new DateTimeZone('Europe/Berlin');
+		$imZeitraum = $this->planung->lesen($ics, new DateTimeImmutable('2026-11-01', $zone), new DateTimeImmutable('2026-12-01', $zone));
+		$this->assertSame('2026-11-05T14:00:00+01:00', $imZeitraum['beginn']);
+	}
+
+	public function testFloatingDauerUndSerie(): void {
+		$ics = str_replace(
+			["DTSTART;TZID=Europe/Berlin:20261105T140000", "DTEND;TZID=Europe/Berlin:20261105T170000"],
+			["DTSTART:20261105T140000", "DURATION:PT2H\r\nRRULE:FREQ=WEEKLY;COUNT=5"],
+			self::ics(),
+		);
+		$zone = new DateTimeZone('Europe/Berlin');
+		$daten = $this->planung->lesen($ics, new DateTimeImmutable('2026-11-10', $zone), new DateTimeImmutable('2026-12-31', $zone), $zone);
+		$this->assertSame('2026-11-12T14:00:00+01:00', $daten['beginn']);
+		$this->assertSame('2026-11-12T16:00:00+01:00', $daten['ende']);
+	}
+
+	public function testUtcUndTzidBleibenUnveraendertGanztagsAuch(): void {
+		$zone = new DateTimeZone('Europe/Berlin');
+		$utc = str_replace(
+			["DTSTART;TZID=Europe/Berlin:20261105T140000", "DTEND;TZID=Europe/Berlin:20261105T170000"],
+			["DTSTART:20261105T130000Z", "DTEND:20261105T160000Z"],
+			self::ics(),
+		);
+		$this->assertSame('2026-11-05T13:00:00+00:00', $this->planung->lesen($utc, null, null, $zone)['beginn']);
+		$this->assertSame('2026-11-05T14:00:00+01:00', $this->planung->lesen(self::ics(), null, null, new DateTimeZone('America/New_York'))['beginn']);
+		$ganztags = str_replace(
+			["DTSTART;TZID=Europe/Berlin:20261105T140000", "DTEND;TZID=Europe/Berlin:20261105T170000"],
+			["DTSTART;VALUE=DATE:20261105", "DTEND;VALUE=DATE:20261106"],
+			self::ics(),
+		);
+		$daten = $this->planung->lesen($ganztags, null, null, $zone);
+		$this->assertSame('2026-11-05T00:00:00+00:00', $daten['beginn']);
+		$this->assertSame('2026-11-06T00:00:00+00:00', $daten['ende']);
+	}
+
+	// S-KAL-06: unsichtbare und Richtungszeichen.
+
+	public function testUnsichtbareUndRichtungszeichenFliegenRaus(): void {
+		$rlo = "\u{202E}";
+		$planung = $this->eingabe([
+			'titel' => "Löt{$rlo}workshop\u{200B}\u{2066}Grund\u{2069}schule\u{FEFF}",
+			'kontakt_name' => "\u{200E}Eva\u{200F} Muster\u{061C}\u{00AD}",
+			'hinweise' => "Zeile\u{202A} 1\nZeile\u{2060} 2\u{202C}",
+			'kontakt_email' => "eva\u{200B}@example.org",
+		]);
+		$this->assertSame('LötworkshopGrundschule', $planung['titel']);
+		$this->assertSame('Eva Muster', $planung['kontakt_name']);
+		$this->assertSame("Zeile 1\nZeile 2", $planung['hinweise']);
+		$this->assertSame('eva@example.org', $planung['kontakt_email']);
+		// Emoji-Folgen und Schriften mit Verbindern bleiben ganz.
+		$this->assertSame("Team \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}", $this->eingabe(['titel' => "Team \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"])['titel']);
+		// Nur unsichtbare Zeichen gelten als leer.
+		$this->expectException(PlanungException::class);
+		$this->eingabe(['titel' => "\u{200B}\u{202E}\u{FEFF}"]);
+	}
+
+	public function testWeitereUnsichtbareZeichenUndTrenner(): void {
+		// Tag-Zeichen (versteckter Text), Graphem-Verbinder, Hangul-Füllzeichen.
+		$tags = "\u{E0001}\u{E0067}\u{E0065}\u{E0068}\u{E007F}";
+		$planung = $this->eingabe([
+			'titel' => "Löt{$tags}workshop\u{034F}",
+			'kontakt_name' => "\u{115F}Eva\u{1160} \u{3164}Muster\u{FFA0}",
+			// Zeilen- und Absatztrenner: einzeilig zu Leerzeichen, mehrzeilig zu Umbrüchen.
+			'kontakt_organisation' => "Verein\u{2028}Nord",
+			'hinweise' => "Zeile 1\u{2028}Zeile 2\u{2029}Zeile 3",
+		]);
+		$this->assertSame('Lötworkshop', $planung['titel']);
+		$this->assertSame('Eva Muster', $planung['kontakt_name']);
+		$this->assertSame('Verein Nord', $planung['kontakt_organisation']);
+		$this->assertSame("Zeile 1\nZeile 2\nZeile 3", $planung['hinweise']);
+		$e = new Einstellungen("Vereins\u{2029}heim\u{E0041}", '', "Info\u{3164}:");
+		$this->assertSame('Vereins heim', $e->ortVorgabe);
+		$this->assertSame('Info: ', $e->linkText);
+		foreach (["\u{E0000}", "\u{E007F}", "\u{034F}", "\u{115F}", "\u{1160}", "\u{3164}", "\u{FFA0}", "\u{2028}", "\u{2029}"] as $zeichen) {
+			$this->assertSame('ab', Einstellungen::ohneUnsichtbare("a{$zeichen}b"), bin2hex($zeichen));
+		}
+	}
+
+	public function testEinstellungenOhneUnsichtbareZeichen(): void {
+		$e = new Einstellungen("Vereins\u{202E}heim\u{200B}", "Pla\u{2067}nung", "Info\u{FEFF}:");
+		$this->assertSame('Vereinsheim', $e->ortVorgabe);
+		$this->assertSame('Planung', $e->kalenderMuster);
+		$this->assertSame('Info: ', $e->linkText);
+	}
 }

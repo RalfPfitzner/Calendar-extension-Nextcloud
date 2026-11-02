@@ -8,6 +8,7 @@ use OCA\CalendarPlanning\AppInfo\Application;
 use OCA\CalendarPlanning\Service\Einstellungen;
 use OCA\CalendarPlanning\Service\KalenderService;
 use OCA\CalendarPlanning\Service\PlanungException;
+use OCA\CalendarPlanning\Service\Protokoll;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -65,23 +66,27 @@ class ApiController extends Controller {
 			[$start, $ende] = KalenderService::zeitraum($von, $bis);
 			$proSeite = in_array($pro_seite, self::PRO_SEITE, true) ? $pro_seite : self::PRO_SEITE[0];
 			return $this->service->termine($uid, $kalender, $start, $ende, mb_substr($suche, 0, 200), $seite, $proSeite);
-		});
+		}, $kalender);
 	}
 
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 120, period: 60)]
 	public function termin(int $kalender, string $termin): JSONResponse {
-		return $this->ausfuehren(fn (string $uid) => $this->service->termin($uid, $kalender, $termin));
+		return $this->ausfuehren(fn (string $uid) => $this->service->termin($uid, $kalender, $termin), $kalender, $termin);
 	}
 
 	/** @param array<string,mixed> $planung */
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 30, period: 60)]
 	public function speichern(int $kalender, string $termin, string $etag, array $planung): JSONResponse {
-		return $this->ausfuehren(fn (string $uid) => $this->service->speichern($uid, $kalender, $termin, $etag, $planung));
+		return $this->ausfuehren(fn (string $uid) => $this->service->speichern($uid, $kalender, $termin, $etag, $planung), $kalender, $termin);
 	}
 
-	private function ausfuehren(callable $aufruf): JSONResponse {
+	/**
+	 * @param int|null $kalender nur für das Protokoll
+	 * @param string|null $termin nur für das Protokoll, dort nur als Hash
+	 */
+	private function ausfuehren(callable $aufruf, ?int $kalender = null, ?string $termin = null): JSONResponse {
 		$user = $this->userSession->getUser();
 		if ($user === null) {
 			return new JSONResponse(['fehler' => 'Nicht angemeldet'], 401);
@@ -94,8 +99,13 @@ class ApiController extends Controller {
 				? $e->getCode() : Http::STATUS_BAD_REQUEST;
 			return new JSONResponse(['fehler' => $e->getMessage()], $status);
 		} catch (\Throwable $e) {
-			$this->logger->error('Kalender-Planung: ' . $e->getMessage(), ['exception' => $e]);
+			$this->logger->error(self::protokollText($e, $kalender, $termin), ['app' => Application::APP_ID]);
 			return new JSONResponse(['fehler' => 'Interner Fehler, Details im Nextcloud-Protokoll'], 500);
 		}
+	}
+
+	/** Protokollzeile zu einem unerwarteten Fehler, ohne Inhalte (S-KAL-01, siehe Protokoll::text). */
+	public static function protokollText(\Throwable $e, ?int $kalender = null, ?string $termin = null): string {
+		return Protokoll::text($e, $kalender, $termin);
 	}
 }

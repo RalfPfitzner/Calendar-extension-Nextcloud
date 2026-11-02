@@ -27,7 +27,18 @@
 					<span>Text vor dem Link in der Terminbeschreibung</span>
 					<input v-model="einstellungen.link_text" type="text" maxlength="100" placeholder="Planung öffnen:">
 				</label>
-				<NcNoteCard v-if="einstellungenMeldung" :type="einstellungenMeldung.typ">
+				<div aria-live="polite">
+					<NcNoteCard v-if="einstellungenGeaendert" type="warning">
+						Ungespeicherte Änderungen an den Vorgaben.
+					</NcNoteCard>
+				</div>
+				<!-- Erfolg und Hinweise in einem dauerhaften Live-Bereich (NcNoteCard setzt role=alert nur bei Fehlern). -->
+				<div aria-live="polite">
+					<NcNoteCard v-if="einstellungenMeldung && einstellungenMeldung.typ !== 'error'" :type="einstellungenMeldung.typ">
+						{{ einstellungenMeldung.text }}
+					</NcNoteCard>
+				</div>
+				<NcNoteCard v-if="einstellungenMeldung && einstellungenMeldung.typ === 'error'" type="error">
 					{{ einstellungenMeldung.text }}
 				</NcNoteCard>
 				<div class="admin__aktionen">
@@ -41,10 +52,21 @@
 				<h3>Felder des Planungsformulars</h3>
 				<p class="admin__hinweis">
 					Titel und Ort stehen immer im Formular. Höchstens 50 Felder, höchstens 3 davon als Spalte in der Liste.
-					Schlüssel: a–z, 0–9 und _, beginnend mit einem Buchstaben.
+					Schlüssel: a–z, 0–9 und _, beginnend mit einem Buchstaben. Der Schlüssel eines neuen Feldes folgt der
+					Bezeichnung; nach dem Speichern bleibt er fest, damit erfasste Werte am Feld bleiben.
 				</p>
 				<SchemaEditor v-model="schema" />
-				<NcNoteCard v-if="schemaMeldung" :type="schemaMeldung.typ">
+				<div aria-live="polite">
+					<NcNoteCard v-if="schemaGeaendert" type="warning">
+						Ungespeicherte Änderungen an den Feldern. Erst „Felder speichern“ übernimmt sie.
+					</NcNoteCard>
+				</div>
+				<div aria-live="polite">
+					<NcNoteCard v-if="schemaMeldung && schemaMeldung.typ !== 'error'" :type="schemaMeldung.typ">
+						{{ schemaMeldung.text }}
+					</NcNoteCard>
+				</div>
+				<NcNoteCard v-if="schemaMeldung && schemaMeldung.typ === 'error'" type="error">
 					{{ schemaMeldung.text }}
 				</NcNoteCard>
 				<div class="admin__aktionen">
@@ -60,14 +82,16 @@
 				</div>
 			</form>
 		</template>
+		<Rueckfrage ref="rueckfrage" />
 	</div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import Rueckfrage from './components/Rueckfrage.vue'
 import SchemaEditor from './components/SchemaEditor.vue'
 import { adminEinstellungenLaden, adminEinstellungenSpeichern, fehlertext, schemaLaden, schemaSpeichern } from './api.js'
 
@@ -79,14 +103,46 @@ const ladeFehler = ref('')
 const einstellungenMeldung = ref(null)
 const schemaMeldung = ref(null)
 const speichert = ref(false)
+const rueckfrage = ref(null)
+
+/** Zuletzt geladener oder gespeicherter Stand, zum Erkennen ungespeicherter Änderungen (U-KAL-10). */
+const schemaGespeichert = ref(null)
+const einstellungenGespeichert = ref('')
 
 const kopie = (wert) => JSON.parse(JSON.stringify(wert))
 
+/** Schema ohne die Hilfsangaben des Editors (`_neu`, `_manuell`), so wie der Server es speichert. */
+function ohneHilfsfelder(wert) {
+	return {
+		...wert,
+		abschnitte: wert.abschnitte.map((abschnitt) => ({
+			...abschnitt,
+			felder: abschnitt.felder.map(({ _neu, _manuell, ...feld }) => feld),
+		})),
+	}
+}
+
+const schemaGeaendert = computed(() => schema.value !== null && schemaGespeichert.value !== null
+	&& JSON.stringify(ohneHilfsfelder(schema.value)) !== JSON.stringify(schemaGespeichert.value))
+const einstellungenGeaendert = computed(() => einstellungen.value !== null
+	&& JSON.stringify(einstellungen.value) !== einstellungenGespeichert.value)
+
+/** Rückfrage des Browsers beim Verlassen oder Neuladen der Seite mit ungespeicherten Änderungen. */
+function vorDemVerlassen(ereignis) {
+	if (schemaGeaendert.value || einstellungenGeaendert.value) {
+		ereignis.preventDefault()
+		ereignis.returnValue = ''
+	}
+}
+
 onMounted(async () => {
+	window.addEventListener('beforeunload', vorDemVerlassen)
 	try {
 		const [e, s] = await Promise.all([adminEinstellungenLaden(), schemaLaden()])
 		einstellungen.value = e
+		einstellungenGespeichert.value = JSON.stringify(e)
 		schema.value = s.schema
+		schemaGespeichert.value = kopie(s.schema)
 		vorgabe.value = s.vorgabe
 		presets.value = s.presets
 	} catch (fehler) {
@@ -94,11 +150,14 @@ onMounted(async () => {
 	}
 })
 
+onBeforeUnmount(() => window.removeEventListener('beforeunload', vorDemVerlassen))
+
 async function einstellungenSichern() {
 	speichert.value = true
 	einstellungenMeldung.value = null
 	try {
 		einstellungen.value = await adminEinstellungenSpeichern(einstellungen.value)
+		einstellungenGespeichert.value = JSON.stringify(einstellungen.value)
 		einstellungenMeldung.value = { typ: 'success', text: 'Vorgaben gespeichert.' }
 	} catch (fehler) {
 		einstellungenMeldung.value = { typ: 'error', text: fehlertext(fehler) }
@@ -107,12 +166,34 @@ async function einstellungenSichern() {
 	}
 }
 
+const felderVon = (wert) => wert.abschnitte.flatMap((abschnitt) => abschnitt.felder)
+const feldname = (feld) => `„${feld.label}“ (${feld.key})`
+
 async function schemaSichern() {
+	// Fallen gespeicherte Schlüssel weg, hängen erfasste Werte an keinem Feld mehr (Q-KAL-01): vorher nachfragen.
+	const bleibt = new Set(felderVon(schema.value).map((feld) => feld.key))
+	const weg = felderVon(schemaGespeichert.value).filter((feld) => !bleibt.has(feld.key))
+	if (weg.length > 0 && !await rueckfrage.value.fragen({
+		titel: weg.length === 1 ? 'Ein Feld fällt weg' : `${weg.length} Felder fallen weg`,
+		text: `Diese Felder sind nach dem Speichern nicht mehr im Formular: ${weg.map(feldname).join(', ')}. `
+			+ 'Bereits in Terminen erfasste Werte bleiben dort gespeichert, erscheinen aber erst wieder, wenn ein Feld mit demselben Schlüssel angelegt wird.',
+		ja: 'Trotzdem speichern',
+		nein: 'Weiter bearbeiten',
+	})) {
+		return
+	}
 	speichert.value = true
 	schemaMeldung.value = null
 	try {
-		schema.value = (await schemaSpeichern(schema.value)).schema
-		schemaMeldung.value = { typ: 'success', text: 'Felder gespeichert. Das Formular zeigt sie beim nächsten Laden.' }
+		const antwort = await schemaSpeichern(ohneHilfsfelder(schema.value))
+		schema.value = antwort.schema
+		schemaGespeichert.value = kopie(antwort.schema)
+		const entfernt = antwort.entfernt ?? []
+		schemaMeldung.value = {
+			typ: 'success',
+			text: 'Felder gespeichert. Das Formular zeigt sie beim nächsten Laden.'
+				+ (entfernt.length > 0 ? ` Nicht mehr im Formular: ${entfernt.map(feldname).join(', ')}; erfasste Werte bleiben im Termin.` : ''),
+		}
 	} catch (fehler) {
 		schemaMeldung.value = { typ: 'error', text: fehlertext(fehler) }
 	} finally {
@@ -120,8 +201,13 @@ async function schemaSichern() {
 	}
 }
 
-function laden(quelle, name) {
-	if (!window.confirm(`„${name}“ in den Editor laden? Die aktuellen Felder im Editor werden ersetzt; gespeichert wird erst mit „Felder speichern“.`)) {
+async function laden(quelle, name) {
+	if (!await rueckfrage.value.fragen({
+		titel: `${name} laden?`,
+		text: 'Die aktuellen Felder im Editor werden ersetzt; gespeichert wird erst mit „Felder speichern“.',
+		ja: 'Vorlage laden',
+		nein: 'Abbrechen',
+	})) {
 		return
 	}
 	schema.value = kopie(quelle)
