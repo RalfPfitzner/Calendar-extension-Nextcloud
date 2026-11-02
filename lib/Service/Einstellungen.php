@@ -8,7 +8,7 @@ namespace OCA\CalendarPlanning\Service;
  * Einstellungen der App, wie ein Admin sie gesetzt hat (siehe EinstellungenSpeicher).
  *
  * Reiner Wertehalter ohne Nextcloud-Abhängigkeit, damit Planung ohne Server testbar bleibt.
- * Die Werte sind hier bereits bereinigt: einzeilig, ohne Steuerzeichen, in der Länge gedeckelt.
+ * Die Werte sind hier bereits bereinigt: einzeilig, ohne Steuer-, unsichtbare und Richtungszeichen, in der Länge gedeckelt.
  */
 class Einstellungen {
 	/** Schlüssel in der App-Konfiguration (`occ config:app:set calendar_planning <schlüssel> --value …`). */
@@ -45,10 +45,27 @@ class Einstellungen {
 		$this->schema = $schema ?? Schema::vorgabe();
 	}
 
-	/** Umbrüche und Tabs zu Leerzeichen, sonstige Steuerzeichen raus, Länge deckeln. */
+	/**
+	 * Unsichtbare Zeichen und Richtungszeichen (S-KAL-06): Mit ihnen sehen Texte anders aus, als sie sind
+	 * (umgedrehte Reihenfolge, versteckte Zeichen in scheinbar gleichen Werten).
+	 * U+00AD weiches Trennzeichen, U+061C arabische Richtungsmarke, U+180E mongolischer Vokaltrenner,
+	 * U+200B Nullbreite-Leerzeichen, U+200E/U+200F Richtungsmarken, U+202A–U+202E Einbettungen und Überschreibungen,
+	 * U+2060–U+2064 Wortverbinder und unsichtbare Operatoren, U+2066–U+2069 Isolate, U+FEFF Byte-Order-Mark.
+	 * Bewusst nicht: U+200C/U+200D (Nullbreite-(Nicht-)Verbinder). Sie gehören zu Emoji-Folgen und zur Schreibung
+	 * z. B. im Persischen und in indischen Schriften und drehen keine Reihenfolge um.
+	 */
+	public const UNSICHTBAR = '/[\x{00AD}\x{061C}\x{180E}\x{200B}\x{200E}\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}]/u';
+
+	/** Unsichtbare und Richtungszeichen entfernen (siehe UNSICHTBAR). */
+	public static function ohneUnsichtbare(string $wert): string {
+		return (string)preg_replace(self::UNSICHTBAR, '', $wert);
+	}
+
+	/** Umbrüche und Tabs zu Leerzeichen, sonstige Steuerzeichen sowie unsichtbare und Richtungszeichen raus, Länge deckeln. */
 	public static function einzeilig(string $wert, int $maxLaenge): string {
 		$wert = (string)preg_replace('/[\r\n\t]+/', ' ', $wert);
 		$wert = (string)preg_replace('/\p{Cc}/u', '', $wert);
+		$wert = self::ohneUnsichtbare($wert);
 		return mb_substr(trim($wert), 0, $maxLaenge);
 	}
 
