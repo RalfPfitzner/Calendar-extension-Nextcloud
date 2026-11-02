@@ -2,15 +2,27 @@
 
 ## [Unveröffentlicht]
 
-Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-alle.md`): Teil 1 Server, Admin, CI (#21), Teil 2 Formular und App-Rahmen (#22), Teil 3 Liste und Performance.
+## [1.1.0] - 2026-11-02
+
+Alle 46 Befunde aus dem Code-Review vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-alle.md`): Server, Admin, CI und Release (#21), Formular und App-Rahmen (#22), Liste und Performance (#23); dazu der eigene Einstellungsbereich aus 1.0.1 (#20), der nicht getaggt wurde.
 
 ### Hinweise zum Update
+- Update von 1.0.0: Ordner `calendar_planning` durch das Paket `calendar_planning-1.1.0.tar.gz` ersetzen, dann `occ upgrade`. Einstellungen und Planungsdaten bleiben. Herkunft prüfen mit `gh attestation verify calendar_planning-1.1.0.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
+- Unterstützt weiter Nextcloud 34 und 35.
+- Die Einstellungsseite liegt jetzt unter **Verwaltung → Kalender-Planung** statt unter „Zusätzliche Einstellungen“ (#20).
 - Neue Eigenschaft `X-CALPLAN-LINK` im Termin: Sie merkt sich die zuletzt geschriebene Link-Zeile der Beschreibung. Der Feldschlüssel `link` ist deshalb reserviert; ein gespeichertes Schema mit einem Feld `link` gilt als ungültig (die App nimmt dann die Vorgabe und meldet es im Protokoll) und muss vorher umbenannt werden. Sonst keine neuen Einstellungen.
 - Das Feldschema steht ab dem nächsten Speichern als „lazy“ in der App-Konfiguration; bestehende Werte bleiben lesbar. Wer es per `occ` setzt: `occ config:app:set calendar_planning schema --lazy --value …`.
 - Die Sperre gegen gleichzeitiges Speichern wirkt nur mit eingeschaltetem File-Locking (`filelocking.enabled`, Vorgabe an).
 - Ein Feldschema über 64 KiB lässt sich nicht mehr speichern (vorher wurde es angenommen und beim nächsten Laden still durch die Vorgabe ersetzt).
 
 ### Behoben
+- **Einstellungsseite in einem eigenen Bereich „Verwaltung → Kalender-Planung“** statt unter „Zusätzliche
+  Einstellungen“ (`lib/Settings/AdminSection.php`). Dort teilt sich die App die Seite mit anderen Apps; Impersonate
+  5.0.0 (Nextcloud 34) und 6.0.0 (35) liefern `<div id="impersonate"</div>` ohne schließende Klammer, dadurch
+  verschwinden alle folgenden Formulare, auch dieses. Gefunden bei der ersten Installation (Nextcloud 34.0.5 mit
+  Impersonate 5.0.0); der Fix in Impersonate (nextcloud/impersonate#703) ist noch in keinem Release. Die Test-Nextcloud
+  installiert diese Impersonate-Versionen jetzt mit, die Browser-Tests prüfen die Seite unter der neuen Adresse
+  `/settings/admin/calendar_planning`.
 - **Ganztägige Serien** mit EXDATE oder RECURRENCE-ID als Uhrzeit mit Zeitzone (z. B. aus Outlook) zeigen ausgefallene und verschobene Termine richtig; alte Serien „Mo–Fr“, deren Beginn auf einem Wochenende liegt, fallen nicht mehr aus der Liste.
 - **Barrierefreiheit der Liste:** Spaltenzuordnung für Bildschirmleser auch auf schmalen Bildschirmen richtig; eine Fehlermeldung verschwindet, wenn man zur angezeigten Liste zurückkehrt.
 - **Terminliste ohne seitliches Scrollen:** Die Spalte „Planung“ ist ab 1280 Pixel sichtbar, auf Tablet und Handy stehen Ort, Listenfelder und Planung unter dem Titel (U-KAL-02).
@@ -45,6 +57,9 @@ Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-al
 - **Release-Freigabe:** Der Job, der signiert und hochlädt, läuft in der Umgebung `release`. Mit Prüfer und Tag-Ruleset (Anleitung in `docs/REPO-EINSTELLUNGEN.md`) erzeugt nur noch ein Admin ein Release.
 
 ### Geändert
+- `follow-redirects` 1.16.1 → 1.16.2 (über `@nextcloud/axios` → `axios`) wegen GHSA-mrwp-f3q8-3g9p
+  (CVE-2026-116689, „high“). Die Lücke steckt im Node-HTTP-Weg; das gebaute Bundle enthält `follow-redirects` nicht,
+  die App war also nicht betroffen. Ohne Update schlägt aber die Prüfung `npm audit` (ab „high“) in der CI fehl.
 - **Liste deutlich schneller:** Serien werden nicht mehr Tag für Tag durchgerechnet, jeder Termin wird nur einmal geladen und gelesen, die Kalenderliste je Anfrage einmal aufgebaut; mit 2 000 Terminen antwortet die Liste in 0,8 statt 5,6 Sekunden. Überholte Anfragen beim Tippen werden abgebrochen (P-KAL-01, P-KAL-02, P-KAL-03, P-KAL-04). Die Datenbank sucht mit Anfang und Ende des Zeitraums vor, gelesen werden nur Termine im Zeitraum; enge oder vergangene Zeiträume sind dadurch besonders schnell, der Speicher je Anfrage steigt etwas.
 - **Termintitel sind Links:** Mittelklick und Strg-Klick öffnen einen neuen Tab (U-KAL-07).
 - **Blättern und leere Suche:** Knöpfe mit Namen („Erste Seite“, „Seite 3“ …); eine leere Suche nennt den Suchbegriff und bietet „Suche zurücksetzen“; Laden und Trefferzahl werden angesagt (U-KAL-12, U-KAL-14, U-KAL-15).
@@ -57,25 +72,6 @@ Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-al
 - **Einstellungsseite:** Hinweis auf ungespeicherte Änderungen, Rückfrage beim Verlassen; bei schmalem Fenster Karten statt Tabelle, kein seitliches Scrollen von 1280 bis 600 Pixel; verständliche Fehlermeldungen (Abschnitt und Feld ab 1 gezählt, mit Bezeichnung); Feld entfernen mit „Rückgängig“, mehrfach in umgekehrter Reihenfolge, Fokus bleibt beim Verschieben am Feld (U-KAL-10, U-KAL-18, U-KAL-19, U-KAL-20).
 - **Einstellungsseite, Barrierefreiheit:** Rückfragen als Dialog von Nextcloud mit Knöpfen, die die Aktion nennen („Trotzdem speichern“/„Weiter bearbeiten“, „Vorlage laden“/„Abbrechen“, „Abschnitt entfernen“/„Behalten“), Fokus danach zurück; nach Entfernen von Feldern und Abschnitten steht der Fokus am nachrückenden Element, ein neuer Abschnitt bekommt den Fokus in seiner Überschrift; Erfolgsmeldungen in einem Live-Bereich; jede Eingabe hat ein echtes, eindeutiges Label („Pflicht Feld 2 in Abschnitt 1 („Name“)“), in der Karten-Ansicht sichtbar und anklickbar; kein seitliches Scrollen auch bei 320 Pixel.
 - **CI schneller:** Playwright-Chromium und Composer aus dem Cache; die Test-Nextcloud nimmt Containername und Port aus `NC_NAME`/`NC_PORT` und entfernt ihr Volume mit.
-
-## [1.0.1] - 2026-11-01
-
-### Behoben
-- **Einstellungsseite in einem eigenen Bereich „Verwaltung → Kalender-Planung“** statt unter „Zusätzliche
-  Einstellungen“ (`lib/Settings/AdminSection.php`). Dort teilt sich die App die Seite mit anderen Apps; Impersonate
-  5.0.0 (Nextcloud 34) und 6.0.0 (35) liefern `<div id="impersonate"</div>` ohne schließende Klammer, dadurch
-  verschwinden alle folgenden Formulare, auch dieses. Gefunden bei der ersten Installation (Nextcloud 34.0.5 mit
-  Impersonate 5.0.0); der Fix in Impersonate (nextcloud/impersonate#703) ist noch in keinem Release. Die Test-Nextcloud
-  installiert diese Impersonate-Versionen jetzt mit, die Browser-Tests prüfen die Seite unter der neuen Adresse
-  `/settings/admin/calendar_planning`.
-
-### Hinweise zum Update
-- Altes Verzeichnis `calendar_planning` ersetzen, dann `occ upgrade`. Einstellungen und Daten bleiben.
-
-### Geändert
-- `follow-redirects` 1.16.1 → 1.16.2 (über `@nextcloud/axios` → `axios`) wegen GHSA-mrwp-f3q8-3g9p
-  (CVE-2026-116689, „high“). Die Lücke steckt im Node-HTTP-Weg; das gebaute Bundle enthält `follow-redirects` nicht,
-  die App war also nicht betroffen. Ohne Update schlägt aber die Prüfung `npm audit` (ab „high“) in der CI fehl.
 
 ## [1.0.0] - 2026-10-28
 
