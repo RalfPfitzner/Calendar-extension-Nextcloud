@@ -12,7 +12,7 @@
 		"php": ">=8.2"
 	},
 	"require-dev": {
-		"nextcloud/ocp": "~34.0.5",
+		"nextcloud/ocp": "^35.0",
 		"phpstan/phpstan": "^2.1",
 		"phpunit/phpunit": "^10.5",
 		"sabre/vobject": "^4.5"
