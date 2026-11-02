@@ -47,14 +47,14 @@ Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist de
 
 ## 3. Einstellungen (Admin)
 
-Einstellungsseite unter „Verwaltung → Zusätzliche Einstellungen“ (`lib/Settings/Admin.php`, Oberfläche `src/Admin.vue`), Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für Admins (ohne `NoAdminRequired`). Alle Werte in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen und geschrieben von `EinstellungenSpeicher`, bereinigt in `Einstellungen` (einzeilig, ohne Steuerzeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben. Jede gespeicherte Änderung (Schema oder Vorgaben) geht als `CriticalActionPerformedEvent` an das Audit-Protokoll von Nextcloud (App `admin_audit`, falls aktiv: mit Konto und Zeit), nur mit der Zahl der Abschnitte und Felder, ohne Inhalte.
+Einstellungsseite unter „Verwaltung → Zusätzliche Einstellungen“ (`lib/Settings/Admin.php`, Oberfläche `src/Admin.vue`), Routen `GET/PUT /api/schema` und `GET/PUT /api/admin/einstellungen` nur für Admins (ohne `NoAdminRequired`). Alle Werte in der App-Konfiguration (`OCP\IAppConfig`, `occ config:app:set calendar_planning <schlüssel> --value …`), gelesen und geschrieben von `EinstellungenSpeicher`, bereinigt in `Einstellungen` (einzeilig, ohne Steuer-, unsichtbare und Richtungszeichen, Länge gedeckelt). Admin-Eingaben gelten trotzdem als fremde Eingaben. Jede gespeicherte Änderung (Schema oder Vorgaben) geht als `CriticalActionPerformedEvent` an das Audit-Protokoll von Nextcloud (App `admin_audit`, falls aktiv: mit Konto und Zeit), nur mit der Zahl der Abschnitte und Felder, ohne Inhalte.
 
 | Schlüssel | Vorgabe | Wirkung |
 |---|---|---|
 | `ort_vorgabe` | leer | Standardort (siehe Abschnitt 2), höchstens 500 Zeichen |
 | `kalender_muster` | leer | Namensfragment für die Vorbelegung der Kalenderauswahl; ohne Treffer oder ohne Muster der erste Kalender |
 | `link_text` | `Planung öffnen:` | Erkennungszeichen vor dem Link in der Beschreibung; leer fällt auf die Vorgabe zurück, weil sonst jede Zeile als alter Link gälte |
-| `schema` | `schema/vorgabe.json` | Feldschema als JSON (siehe unten); ungültig gespeichert heißt Vorgabe plus Warnung im Protokoll |
+| `schema` | `schema/vorgabe.json` | Feldschema als JSON (siehe unten), höchstens 64 KiB; die Einstellungsseite lehnt ein größeres Schema beim Speichern ab. Ungültig gespeichert (z. B. von Hand über `occ`) heißt Vorgabe plus Warnung im Protokoll |
 
 ### Feldschema
 
@@ -69,14 +69,17 @@ Die Oberfläche bekommt Standardort und Schema über `GET /api/einstellungen` (j
 | Frage (aus `historie/info.md`, Abschnitt 7) | Entscheidung | Begründung |
 |---|---|---|
 | Namen der Eigenschaften | wie in Abschnitt 2 | Deutsch, sprechend, ohne Umlaute (iCalendar erlaubt in Namen nur A–Z, 0–9 und „-“); eigener Vendor-Präfix `X-CALPLAN-`. |
-| Link „Planung öffnen“ automatisch oder manuell? | Automatisch beim ersten Speichern im Formular; ein Link mit veralteter Adresse oder altem Linktext wird ersetzt, nie verdoppelt (erkannt am Linktext oder an der Adresse `…/apps/calendar_planning/?kalender=…&termin=…`). | Ein Link vor dem ersten Speichern ginge nur, wenn die App jeden neuen Termin anfasst. Das wäre ein Eingriff in fremde Termine, den niemand ausgelöst hat. |
+| Link „Planung öffnen“ automatisch oder manuell? | Automatisch beim ersten Speichern im Formular; ein Link mit veralteter Adresse oder altem Linktext wird ersetzt, nie verdoppelt. Erkannt wird er nur an der Adresse `…/apps/calendar_planning/?kalender=…&termin=…`, nicht am Linktext: Eigene Zeilen, die zufällig mit dem Linktext beginnen, bleiben stehen. | Ein Link vor dem ersten Speichern ginge nur, wenn die App jeden neuen Termin anfasst. Das wäre ein Eingriff in fremde Termine, den niemand ausgelöst hat. |
 | Druck-/PDF-Ansicht | noch nicht umgesetzt | optional laut Chat; nächster Schritt, wenn gewünscht. |
 
 Weitere Entscheidungen:
 
 - **Lesen und Schreiben** über das CalDAV-Backend von Nextcloud (`OCA\DAV\CalDAV\CalDavBackend`). Die öffentliche Kalender-Schnittstelle (OCP) kann Termine nur neu anlegen, nicht ändern. Welche Kalender jemand sieht und ob er schreiben darf, kommt trotzdem aus OCP, also aus denselben Freigaben wie in der Kalender-App.
 - **Freigaben:** Wer den Kalender nur lesen darf, sieht das Formular schreibgeschützt. Als „privat“ oder „vertraulich“ markierte Termine sieht in einem geteilten Kalender nur der Eigentümer.
-- **Gleichzeitiges Bearbeiten:** Gespeichert wird nur, wenn der Termin seit dem Öffnen unverändert ist (ETag). Sonst kommt die Meldung „Der Termin wurde inzwischen geändert …“, damit niemand Änderungen aus der Kalender-App überschreibt.
+- **Gleichzeitiges Bearbeiten:** Gespeichert wird nur, wenn der Termin seit dem Öffnen unverändert ist (ETag). Sonst kommt die Meldung „Der Termin wurde inzwischen geändert …“, damit niemand Änderungen aus der Kalender-App überschreibt. Lesen, Vergleich und Schreiben laufen unter einer Sperre je Termin (Sperrdienst von Nextcloud, `ILockingProvider`): Speichern zwei Leute gleichzeitig mit demselben Stand, gewinnt genau einer, der andere bekommt 409. Bricht die Datenbank einen Schritt wegen einer Sperre ab (SQLite: „database is locked“), wiederholt die App ihn bis zu fünfmal. Schreibzugriffe über CalDAV (Kalender-App, Handys) nimmt die Sperre nicht mit; dort bleibt das Zeitfenster so klein wie bei CalDAV selbst.
+- **Zeiten ohne Zeitzone** („Floating“, ohne `TZID` und ohne `Z`) gelten als Ortszeit in `Europe/Berlin`, der Zone, in der die Oberfläche anzeigt, und werden wie in der Kalender-App mit ihrer Wanduhrzeit gezeigt. Ganztägige Termine bleiben ein Datum.
+- **Eingaben** verlieren Steuerzeichen sowie unsichtbare und Richtungszeichen (z. B. U+200B, U+202E, U+2066–U+2069, U+FEFF). Nullbreite-Verbinder (U+200C, U+200D) bleiben, weil Emoji-Folgen und manche Schriften sie brauchen.
+- **Protokoll:** Unerwartete Fehler landen im Nextcloud-Protokoll nur mit Fehlerklasse, Code, Stelle, Kalender-ID und einem Hash des Termins, nie mit Fehlermeldung, Stacktrace oder Termininhalt (Fehler aus dem iCalendar-Parser zitieren den Termintext).
 - **Terminserien:** Die Planung gilt für die ganze Serie und steht im Serien-Termin. Geänderte Einzeltermine einer Serie bekommen dieselben Planungsfelder. Titel und Ort übernehmen sie nur, wenn sie noch die alten Werte der Serie hatten. Die Liste zeigt eine Serie einmal, mit dem ersten Termin im Zeitraum.
 - **Kalenderauswahl:** Vorbelegt über `kalender_muster`; eine andere Auswahl merkt sich die App je Konto (Nutzereinstellung `kalender` über `IUserConfig`).
 - **Keine Scheduling-Mails:** Das Speichern der Planung verschickt keine Einladungs-Updates an Teilnehmende (läuft am CalDAV-Server vorbei). Termin-Zeiten ändert die App ohnehin nicht.
@@ -90,7 +93,7 @@ Die Kontaktdaten Externer stehen im Termin. Sie sieht jeder, der Zugriff auf den
 
 - Erster Einsatz auf einer echten Instanz: `custom_apps` beschreibbar, App aktivieren als Admin, Einstellungen setzen, Freigaben, Bearbeiten in der Kalender-App und auf Handys (DAVx⁵, iOS).
 - Kopieren bzw. Duplizieren eines Termins in der Kalender-App: Bleiben die Felder erhalten, und zeigt der Link dann noch auf den alten Termin? Beim nächsten Speichern im Formular wird der Link der Kopie korrigiert.
-- Die Oberfläche ist einsprachig deutsch, Tagesgrenzen der Liste liegen in `Europe/Berlin`. Für andere Sprachräume braucht es l10n und die Zeitzone aus den Nextcloud-Einstellungen.
+- Die Oberfläche ist einsprachig deutsch, Tagesgrenzen der Liste und Zeiten ohne Zeitzone liegen in `Europe/Berlin` (`KalenderService::ZONE`, `src/datum.js`). Für andere Sprachräume braucht es l10n und die Zeitzone aus den Nextcloud-Einstellungen.
 - Felder im Editor der Kalender-App anzeigen: wartet auf eine Editor-Schnittstelle der Kalender-App; das Schema ist so gebaut, dass es dort später eingehängt werden kann.
 - Ein Schema je Instanz; Schemata je Kalender bei Bedarf.
 - Optional: Druck-/PDF-Ansicht, Export (Excel/CSV) der Liste.

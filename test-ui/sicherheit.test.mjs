@@ -294,3 +294,112 @@ test('16 Admin-Vorgaben: Steuerzeichen und Überlänge werden bereinigt, falsche
 	assert.equal((await admin.put(`${API}/admin/einstellungen`, { data: vorher })).status(), 200)
 	assert.deepEqual(await json(await admin.get(`${API}/admin/einstellungen`)), vorher)
 })
+
+/** Container der Test-Nextcloud (tools/test-nextcloud.sh, NC_NAME); ohne Docker-Zugriff fallen die Prüfungen am Protokoll weg. */
+const CONTAINER = process.env.NC_NAME ?? 'calplan-nc'
+function imContainer(...argumente) {
+	return execFileSync('docker', ['exec', '-u', 'www-data', '-w', '/var/www/html', CONTAINER, ...argumente], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+}
+let mitDocker = true
+try {
+	imContainer('true')
+} catch {
+	mitDocker = false
+}
+
+/** Ersetzt Text in den gespeicherten Daten eines Kalenderobjekts direkt in der Datenbank, an CalDAV und seiner Prüfung vorbei. */
+function kalenderdatenAendern(uri, alt, neu) {
+	const php = `require 'lib/base.php';
+$db = \\OCP\\Server::get(\\OCP\\IDBConnection::class);
+$q = $db->getQueryBuilder();
+$q->select('id', 'calendardata')->from('calendarobjects')->where($q->expr()->eq('uri', $q->createNamedParameter($argv[1])));
+foreach ($q->executeQuery()->fetchAll() as $z) {
+	$d = is_resource($z['calendardata']) ? stream_get_contents($z['calendardata']) : $z['calendardata'];
+	$u = $db->getQueryBuilder();
+	$u->update('calendarobjects')->set('calendardata', $u->createNamedParameter(str_replace($argv[2], $argv[3], $d), \\OCP\\DB\\QueryBuilder\\IQueryBuilder::PARAM_LOB))
+		->where($u->expr()->eq('id', $u->createNamedParameter($z['id'])))->executeStatement();
+}`
+	imContainer('php', '-r', php, '--', uri, alt, neu)
+}
+
+async function davAnlegen(uri, ics) {
+	const antwort = await fetch(`${DAV}/${uri}`, { method: 'PUT', headers: { Authorization: basic(NUTZER, PASSWORT), 'Content-Type': 'text/calendar' }, body: ics })
+	assert.ok([201, 204].includes(antwort.status), `${uri} anlegen: ${antwort.status}`)
+}
+
+async function davLoeschen(uri) {
+	await fetch(`${DAV}/${uri}`, { method: 'DELETE', headers: { Authorization: basic(NUTZER, PASSWORT), 'X-NC-CalDAV-No-Trashbin': '1' } })
+}
+
+const einTermin = (uid, zeilen) => 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//DE\r\nBEGIN:VEVENT\r\n'
+	+ `UID:${uid}\r\nDTSTAMP:20260101T000000Z\r\n${zeilen}END:VEVENT\r\nEND:VCALENDAR\r\n`
+
+test('17 Gleichzeitig speichern mit demselben ETag: genau eine Speicherung gewinnt, die andere bekommt 409', async () => {
+	for (const runde of [1, 2]) {
+		const etag = (await termin(admin, planungskalender.id, 'workshop-1.ics')).daten.etag
+		const antworten = await Promise.all(['Erste', 'Zweite'].map((wer) => speichern(admin, planungskalender.id, { zustaendig: `${wer} ${runde}` }, etag)))
+		assert.deepEqual(antworten.map((a) => a.status).sort(), [200, 409], `Runde ${runde}`)
+		const gewinner = antworten.find((a) => a.status === 200)
+		const verlierer = antworten.find((a) => a.status === 409)
+		assert.match(verlierer.daten.fehler, /geändert|gespeichert/)
+		const danach = (await termin(admin, planungskalender.id, 'workshop-1.ics')).daten
+		assert.equal(danach.zustaendig, gewinner.daten.zustaendig)
+		assert.equal(danach.etag, gewinner.daten.etag)
+	}
+	await speichern(admin, planungskalender.id, {})
+})
+
+test('18 Interner Fehler: Termininhalt und Kontaktdaten erscheinen nicht im Nextcloud-Protokoll', { skip: !mitDocker && `kein Zugriff auf den Container ${CONTAINER}` }, async () => {
+	const marke = `GEHEIM-${Date.now()}-kontakt@example.org`
+	const uri = 'kaputt-1.ics'
+	await davAnlegen(uri, einTermin('kaputt-1', `DTSTART;TZID=Europe/Berlin:20310105T090000\r\nDURATION:PT1H\r\nSUMMARY:Kaputter Termin ${marke}\r\nDESCRIPTION:Telefon 0123 ${marke}\r\n`))
+	try {
+		// Eine Dauer, an der der iCalendar-Parser scheitert; dessen Meldung zitiert den Wert, also die Marke.
+		kalenderdatenAendern(uri, 'DURATION:PT1H', `DURATION:${marke}`)
+		const antwort = await termin(admin, planungskalender.id, uri)
+		assert.equal(antwort.status, 500)
+		assert.doesNotMatch(JSON.stringify(antwort.daten), /GEHEIM|example\.org|Exception|\.php/)
+		const protokoll = imContainer('cat', 'data/nextcloud.log')
+		assert.ok(protokoll.includes('Kalender-Planung: interner Fehler'), 'der Fehler steht im Protokoll')
+		assert.ok(!protokoll.includes('GEHEIM-'), 'die Marke aus dem Termin steht nicht im Protokoll')
+		assert.ok(!protokoll.includes('0123'), 'die Telefonnummer steht nicht im Protokoll')
+	} finally {
+		kalenderdatenAendern(uri, `DURATION:${marke}`, 'DURATION:PT1H')
+		await davLoeschen(uri)
+	}
+})
+
+test('19 Zu großes Feldschema: 400 mit verständlicher Meldung, das gespeicherte Schema bleibt', async () => {
+	const vorher = (await json(await admin.get(`${API}/schema`))).schema
+	// Für sich gültig (50 Felder mit je 50 Optionen), als JSON aber weit über 64 KiB.
+	const felder = Array.from({ length: 50 }, (_, i) => ({
+		key: `f${i}`, label: `Feld ${i}`, typ: 'select', optionen: Array.from({ length: 50 }, (_, j) => `Option ${i}-${j} ` + 'x'.repeat(60)),
+	}))
+	const antwort = await admin.put(`${API}/schema`, { data: { schema: { abschnitte: [{ titel: 'Groß', felder }] } } })
+	assert.equal(antwort.status(), 400)
+	assert.match((await json(antwort)).fehler, /zu groß.*höchstens 64 KiB/)
+	assert.deepEqual((await json(await admin.get(`${API}/schema`))).schema, vorher)
+})
+
+test('20 Unsichtbare und Richtungszeichen landen nicht im Termin', async () => {
+	const antwort = await speichern(admin, planungskalender.id, { titel: 'Lötworkshop‮ Grund​schule⁦', zustaendig: '‏Eva﻿' })
+	assert.equal(antwort.status, 200)
+	assert.equal(antwort.daten.titel, 'Lötworkshop Grundschule')
+	assert.equal(antwort.daten.zustaendig, 'Eva')
+	assert.doesNotMatch(await rohesIcs(), /[​‎‏‪-‮⁦-⁩﻿]/)
+	await speichern(admin, planungskalender.id, {})
+})
+
+test('21 Zeiten ohne Zeitzone gelten als Ortszeit, nicht als UTC', async () => {
+	const uri = 'floating-1.ics'
+	await davAnlegen(uri, einTermin('floating-1', 'DTSTART:20310105T140000\r\nDTEND:20310105T160000\r\nSUMMARY:Ohne Zeitzone\r\n'))
+	try {
+		const daten = (await termin(admin, planungskalender.id, uri)).daten
+		assert.equal(daten.beginn, '2031-01-05T14:00:00+01:00')
+		assert.equal(daten.ende, '2031-01-05T16:00:00+01:00')
+		const liste = await json(await admin.get(`${API}/termine`, { params: { kalender: planungskalender.id, von: '2031-01-01', bis: '2031-01-31' } }))
+		assert.equal(liste.termine.find((t) => t.titel === 'Ohne Zeitzone')?.beginn, '2031-01-05T14:00:00+01:00')
+	} finally {
+		await davLoeschen(uri)
+	}
+})

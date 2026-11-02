@@ -44,9 +44,11 @@ class Planung {
 	 * Liest Termindaten und Planung aus einem Kalenderobjekt.
 	 *
 	 * @param DateTimeInterface|null $von  mit $bis: bei Serien den ersten Termin im Zeitraum ermitteln
+	 * @param DateTimeZone|null $zone Zone für „Floating“-Zeiten (ohne TZID und ohne Z), also die Ortszeit, in der
+	 *   die Oberfläche anzeigt; ohne Angabe die Zone von $von, sonst die PHP-Vorgabe (in Nextcloud UTC)
 	 * @return array<string,mixed>|null null, wenn das Objekt kein Termin ist
 	 */
-	public function lesen(string $ics, ?DateTimeInterface $von = null, ?DateTimeInterface $bis = null): ?array {
+	public function lesen(string $ics, ?DateTimeInterface $von = null, ?DateTimeInterface $bis = null, ?DateTimeZone $zone = null): ?array {
 		$kalender = Reader::read($ics);
 		if (!$kalender instanceof VCalendar) {
 			return null;
@@ -57,12 +59,16 @@ class Planung {
 		}
 
 		$ganztags = isset($termin->DTSTART) && !$termin->DTSTART->hasTime();
-		$beginn = isset($termin->DTSTART) ? $termin->DTSTART->getDateTime() : null;
-		$ende = $this->ende($termin);
+		$zone ??= $von?->getTimezone();
+		// Floating-Zeiten gelten als Ortszeit (wie in der Kalender-App), nicht als UTC (Q-KAL-05). Zeiten mit TZID
+		// oder Z bleiben, wie sie sind; Ganztags-Termine bleiben UTC-Mitternacht, die Oberfläche liest daraus das Datum.
+		$ortszeit = $ganztags ? null : $zone;
+		$beginn = isset($termin->DTSTART) ? $termin->DTSTART->getDateTime($ortszeit) : null;
+		$ende = $this->ende($termin, $ortszeit);
 		$serie = isset($termin->RRULE);
 
 		if ($serie && $von !== null && $bis !== null) {
-			$erster = $this->ersterImZeitraum($kalender, $von, $bis);
+			$erster = $this->ersterImZeitraum($kalender, $von, $bis, $zone ?? $von->getTimezone());
 			if ($erster !== null) {
 				[$beginn, $ende] = $erster;
 			}
@@ -213,7 +219,8 @@ class Planung {
 	}
 
 	/**
-	 * Textwert aus der Eingabe: ohne Steuerzeichen, einzeilig falls verlangt, getrimmt, Länge geprüft.
+	 * Textwert aus der Eingabe: ohne Steuer-, unsichtbare und Richtungszeichen, einzeilig falls verlangt, getrimmt,
+	 * Länge geprüft.
 	 *
 	 * @param array<string,mixed> $eingabe
 	 */
@@ -231,6 +238,7 @@ class Planung {
 			// Mehrzeilig: Umbruch und Tab bleiben, alle anderen Steuerzeichen raus.
 			$wert = (string)preg_replace('/[^\P{Cc}\n\t]/u', '', $wert);
 		}
+		$wert = Einstellungen::ohneUnsichtbare($wert);
 		$wert = trim($wert);
 		if (mb_strlen($wert) > $maxLaenge) {
 			throw new PlanungException("„{$label}“ ist zu lang (höchstens {$maxLaenge} Zeichen)");
@@ -251,20 +259,21 @@ class Planung {
 		return $erster;
 	}
 
-	private function ende(VEvent $termin): ?DateTimeImmutable {
+	private function ende(VEvent $termin, ?DateTimeZone $ortszeit = null): ?DateTimeImmutable {
 		if (isset($termin->DTEND)) {
-			return $termin->DTEND->getDateTime();
+			return $termin->DTEND->getDateTime($ortszeit);
 		}
 		if (isset($termin->DTSTART, $termin->DURATION)) {
-			return $termin->DTSTART->getDateTime()->add($termin->DURATION->getDateInterval());
+			return $termin->DTSTART->getDateTime($ortszeit)->add($termin->DURATION->getDateInterval());
 		}
 		return null;
 	}
 
 	/** @return array{0:DateTimeImmutable,1:?DateTimeImmutable}|null */
-	private function ersterImZeitraum(VCalendar $kalender, DateTimeInterface $von, DateTimeInterface $bis): ?array {
+	private function ersterImZeitraum(VCalendar $kalender, DateTimeInterface $von, DateTimeInterface $bis, DateTimeZone $ortszeit): ?array {
 		try {
-			$aufgeloest = (clone $kalender)->expand($von, $bis, $von->getTimezone());
+			// Der dritte Parameter ist die Zone für Floating-Zeiten der Serie.
+			$aufgeloest = (clone $kalender)->expand($von, $bis, $ortszeit);
 		} catch (\Throwable) {
 			return null;
 		}
@@ -297,11 +306,12 @@ class Planung {
 		if (in_array($linkText . $link, explode("\n", $beschreibung), true)) {
 			return;
 		}
-		// Einen veralteten Link (z. B. nach Umzug der Instanz oder mit altem Linktext) ersetzen statt doppeln:
-		// Zeilen mit dem aktuellen Linktext oder mit einem Link dieser App auf das Formular.
+		// Einen veralteten Link (z. B. nach Umzug der Instanz oder mit altem Linktext) ersetzen statt doppeln.
+		// Erkannt wird er nur an der Adresse dieser App (LINK_MUSTER), nie am Linktext allein: Zeilen, die zufällig
+		// mit dem Linktext beginnen („Info: Schlüssel beim Hausmeister“), gehören dem Nutzer und bleiben (Q-KAL-03).
 		$zeilen = array_filter(
 			explode("\n", $beschreibung),
-			fn (string $zeile) => !str_starts_with($zeile, $linkText) && preg_match(self::LINK_MUSTER, $zeile) !== 1,
+			fn (string $zeile) => preg_match(self::LINK_MUSTER, $zeile) !== 1,
 		);
 		$beschreibung = rtrim(implode("\n", $zeilen));
 		$ereignis->DESCRIPTION = ($beschreibung === '' ? '' : $beschreibung . "\n\n") . $linkText . $link;
