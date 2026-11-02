@@ -190,6 +190,153 @@ class PlanungTest extends TestCase {
 		$this->assertSame([self::ORT_VORGABE, 'Sonderort'], $orte);
 	}
 
+	/** Serie mit diesen Zeilen (DTSTART, DTEND, RRULE …) und weiteren VEVENTs (Ausnahmen). */
+	private static function serie(string $zeilen, string $weitere = ''): string {
+		return "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//DE\r\nBEGIN:VEVENT\r\nUID:s1\r\nDTSTAMP:20260101T000000Z\r\n"
+			. $zeilen . "SUMMARY:Offene Werkstatt\r\nEND:VEVENT\r\n" . $weitere . "END:VCALENDAR\r\n";
+	}
+
+	/** @return array{0:?string,1:?string}|null Beginn und Ende der Serie im Zeitraum (Tage in Europe/Berlin) */
+	private function imZeitraum(string $ics, string $von, string $bis, ?string $jetzt = null): ?array {
+		$zone = new DateTimeZone('Europe/Berlin');
+		$daten = $this->planung->lesen($ics, new DateTimeImmutable($von, $zone), new DateTimeImmutable($bis, $zone), $zone,
+			$jetzt === null ? null : new DateTimeImmutable($jetzt, $zone));
+		return $daten === null ? null : [$daten['beginn'], $daten['ende']];
+	}
+
+	private const WOECHENTLICH = "DTSTART;TZID=Europe/Berlin:20260105T100000\r\nDTEND;TZID=Europe/Berlin:20260105T110000\r\nRRULE:FREQ=WEEKLY\r\n";
+
+	public function testSerieErsterTerminImZeitraum(): void {
+		$this->assertSame(['2026-06-01T10:00:00+02:00', '2026-06-01T11:00:00+02:00'], $this->imZeitraum(self::serie(self::WOECHENTLICH), '2026-06-01', '2026-07-01'));
+	}
+
+	public function testSerieMitVerschobenemEinzelterminImZeitraum(): void {
+		$ausnahme = "BEGIN:VEVENT\r\nUID:s1\r\nDTSTAMP:20260101T000000Z\r\nRECURRENCE-ID;TZID=Europe/Berlin:20260601T100000\r\n"
+			. "DTSTART;TZID=Europe/Berlin:20260602T140000\r\nDTEND;TZID=Europe/Berlin:20260602T153000\r\nSUMMARY:verschoben\r\nEND:VEVENT\r\n";
+		$this->assertSame(['2026-06-02T14:00:00+02:00', '2026-06-02T15:30:00+02:00'], $this->imZeitraum(self::serie(self::WOECHENTLICH, $ausnahme), '2026-06-01', '2026-07-01'));
+		// Die Ausnahme liegt vor dem Zeitraum: danach geht es mit der Regel weiter.
+		$this->assertSame('2026-06-08T10:00:00+02:00', $this->imZeitraum(self::serie(self::WOECHENTLICH, $ausnahme), '2026-06-03', '2026-07-01')[0]);
+	}
+
+	public function testEndeEinerVerschobenenAusnahmeKommtVonDerAusnahme(): void {
+		// Tägliche Serie seit 2010 (wird vorgerückt) mit DURATION; die Ausnahme hat ein eigenes DTEND mit anderer Dauer.
+		$ausnahme = "BEGIN:VEVENT\r\nUID:s1\r\nDTSTAMP:20260101T000000Z\r\nRECURRENCE-ID;TZID=Europe/Berlin:20261103T100000\r\n"
+			. "DTSTART;TZID=Europe/Berlin:20261103T170000\r\nDTEND;TZID=Europe/Berlin:20261103T194500\r\nSUMMARY:verschoben\r\nEND:VEVENT\r\n";
+		$ics = self::serie("DTSTART;TZID=Europe/Berlin:20100105T100000\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY\r\n", $ausnahme);
+		$this->assertSame(['2026-11-03T17:00:00+01:00', '2026-11-03T19:45:00+01:00'], $this->imZeitraum($ics, '2026-11-03', '2026-11-04'));
+		// Der Termin davor kommt aus der Serie (Dauer eine Stunde).
+		$this->assertSame(['2026-11-02T10:00:00+01:00', '2026-11-02T11:00:00+01:00'], $this->imZeitraum($ics, '2026-11-02', '2026-11-04'));
+	}
+
+	public function testTaeglicheSerieMitBydayOhneWochentagDesBeginns(): void {
+		// Beginn an einem Sonntag, Termine nur werktags: wird trotzdem vorgerückt und liefert einen Werktag im Zeitraum.
+		$ics = self::serie("DTSTART;TZID=Europe/Berlin:20100103T090000\r\nDTEND;TZID=Europe/Berlin:20100103T100000\r\n"
+			. "RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR\r\n");
+		$dauer = PHP_INT_MAX;
+		for ($i = 0; $i < 3; $i++) {
+			$start = hrtime(true);
+			$ergebnis = $this->imZeitraum($ics, '2026-11-01', '2026-11-08');
+			$dauer = min($dauer, hrtime(true) - $start);
+		}
+		$this->assertSame(['2026-11-02T09:00:00+01:00', '2026-11-02T10:00:00+01:00'], $ergebnis);
+		$this->assertLessThan(20_000_000, $dauer, 'mehr als 20 ms für eine Serie');
+		// Am Wochenende kein Termin, auch nicht der (vorgerückte) Sonntag des Beginns.
+		$this->assertNull($this->imZeitraum($ics, '2026-11-07', '2026-11-09'));
+	}
+
+	public function testGanztagsSerieMitAusnahmeUndExdateAlsUhrzeit(): void {
+		// Outlook schreibt RECURRENCE-ID und EXDATE ganztägiger Serien als Mitternacht mit TZID. Der Montag 02.11.2026
+		// ist auf den 20.11. verschoben, der 09.11. fällt aus.
+		$ausnahme = "BEGIN:VEVENT\r\nUID:s1\r\nDTSTAMP:20260101T000000Z\r\nRECURRENCE-ID;TZID=Europe/Berlin:20261102T000000\r\n"
+			. "DTSTART;VALUE=DATE:20261120\r\nDTEND;VALUE=DATE:20261121\r\nSUMMARY:verschoben\r\nEND:VEVENT\r\n";
+		$ics = self::serie("DTSTART;VALUE=DATE:20260105\r\nDTEND;VALUE=DATE:20260106\r\nRRULE:FREQ=WEEKLY\r\n"
+			. "EXDATE;TZID=Europe/Berlin:20261109T000000\r\n", $ausnahme);
+		$this->assertNull($this->imZeitraum($ics, '2026-11-01', '2026-11-05'));
+		$this->assertNull($this->imZeitraum($ics, '2026-11-08', '2026-11-12'));
+		$this->assertSame(['2026-11-16T01:00:00+01:00', '2026-11-17T01:00:00+01:00'], $this->imZeitraum($ics, '2026-11-08', '2026-11-18'));
+		$this->assertSame(['2026-11-20T01:00:00+01:00', '2026-11-21T01:00:00+01:00'], $this->imZeitraum($ics, '2026-11-18', '2026-11-22'));
+	}
+
+	public function testGanztagsSerie(): void {
+		$ics = self::serie("DTSTART;VALUE=DATE:20260601\r\nDTEND;VALUE=DATE:20260602\r\nRRULE:FREQ=DAILY\r\n");
+		$zone = new DateTimeZone('Europe/Berlin');
+		$daten = $this->planung->lesen($ics, new DateTimeImmutable('2026-06-10', $zone), new DateTimeImmutable('2026-07-10', $zone), $zone);
+		$this->assertTrue($daten['ganztags']);
+		// wie bisher: UTC-Mitternacht des Tages, ausgegeben in der Zone des Zeitraums
+		$this->assertSame('2026-06-10T02:00:00+02:00', $daten['beginn']);
+		$this->assertSame('2026-06-11T02:00:00+02:00', $daten['ende']);
+		// Serie seit Jahren, auch über die Sommerzeit-Umstellung (29.03.2026)
+		$alt = self::serie("DTSTART;VALUE=DATE:20150328\r\nDTEND;VALUE=DATE:20150329\r\nRRULE:FREQ=DAILY\r\n");
+		$this->assertSame(['2026-03-29T01:00:00+01:00', '2026-03-30T02:00:00+02:00'], $this->imZeitraum($alt, '2026-03-29', '2026-04-10'));
+	}
+
+	public function testEndloseTaeglicheSerieOhneVolleAufloesung(): void {
+		// P-KAL-01, P-KAL-06: seit 2020 täglich; ein Jahr 2029/30 hätte expand() mehr als 3 500 Termine gekostet
+		// (MaxInstancesExceededException, die Liste zeigte dann den 05.01.2020).
+		$ics = self::serie("DTSTART;TZID=Europe/Berlin:20200105T100000\r\nDTEND;TZID=Europe/Berlin:20200105T110000\r\nRRULE:FREQ=DAILY\r\n");
+		$dauer = PHP_INT_MAX;
+		for ($i = 0; $i < 3; $i++) {
+			$start = hrtime(true);
+			$ergebnis = $this->imZeitraum($ics, '2029-06-01', '2030-06-01');
+			$dauer = min($dauer, hrtime(true) - $start);
+		}
+		$this->assertSame(['2029-06-01T10:00:00+02:00', '2029-06-01T11:00:00+02:00'], $ergebnis);
+		$this->assertLessThan(20_000_000, $dauer, 'mehr als 20 ms für eine Serie');
+		// seit 2010 (über 6 000 Tage)
+		$alt = str_replace('20200105T', '20100105T', $ics);
+		$this->assertSame('2026-11-02T10:00:00+01:00', $this->imZeitraum($alt, '2026-11-02', '2026-12-01')[0]);
+	}
+
+	public function testSerieMitExdate(): void {
+		$ics = self::serie("DTSTART;TZID=Europe/Berlin:20200105T100000\r\nDTEND;TZID=Europe/Berlin:20200105T110000\r\nRRULE:FREQ=DAILY\r\n"
+			. "EXDATE;TZID=Europe/Berlin:20261102T100000,20261103T100000\r\n");
+		$this->assertSame('2026-11-04T10:00:00+01:00', $this->imZeitraum($ics, '2026-11-02', '2026-12-01')[0]);
+	}
+
+	public function testFloatingSerieInBerlinerZeit(): void {
+		// ohne TZID und ohne Z: Wanduhrzeit in Europe/Berlin, im Sommer wie im Winter
+		$ics = self::serie("DTSTART:20200106T100000\r\nDTEND:20200106T110000\r\nRRULE:FREQ=WEEKLY\r\n");
+		$this->assertSame(['2026-06-01T10:00:00+02:00', '2026-06-01T11:00:00+02:00'], $this->imZeitraum($ics, '2026-06-01', '2026-07-01'));
+		$this->assertSame('2026-11-02T10:00:00+01:00', $this->imZeitraum($ics, '2026-11-01', '2026-12-01')[0]);
+	}
+
+	public function testSerieUeberDieSommerzeitUmstellung(): void {
+		// Uhrzeit bleibt 10:00 Ortszeit, am Umstellungstag selbst und danach; Dauer bleibt eine Stunde.
+		$ics = self::serie("DTSTART;TZID=Europe/Berlin:20191201T100000\r\nDTEND;TZID=Europe/Berlin:20191201T110000\r\nRRULE:FREQ=DAILY\r\n");
+		$this->assertSame(['2026-03-29T10:00:00+02:00', '2026-03-29T11:00:00+02:00'], $this->imZeitraum($ics, '2026-03-29', '2026-04-05'));
+		$this->assertSame(['2026-10-25T10:00:00+01:00', '2026-10-25T11:00:00+01:00'], $this->imZeitraum($ics, '2026-10-25', '2026-11-05'));
+		// Wöchentlich mit BYDAY und INTERVAL, Beginn seit Jahren: dieselben Termine wie die volle Auflösung
+		$zwei = self::serie("DTSTART;TZID=Europe/Berlin:20190107T183000\r\nDTEND;TZID=Europe/Berlin:20190107T200000\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH\r\n");
+		$zone = new DateTimeZone('Europe/Berlin');
+		foreach (['2026-03-26', '2026-03-30', '2026-10-24', '2026-11-03'] as $tag) {
+			$von = new DateTimeImmutable($tag, $zone);
+			$erwartet = Reader::read($zwei)->expand($von, $von->modify('+60 days'), $zone)->VEVENT->DTSTART->getDateTime()->setTimezone($zone);
+			$this->assertSame($erwartet->format(DATE_ATOM), $this->imZeitraum($zwei, $tag, $von->modify('+60 days')->format('Y-m-d'))[0], $tag);
+		}
+	}
+
+	public function testSerieZeigtDenNaechstenTerminAbJetzt(): void {
+		// U-KAL-16: Zeitraum ab 30 Tagen vor heute, jetzt ist Montag 12:00 nach dem Termin um 10:00
+		$ics = self::serie(self::WOECHENTLICH);
+		$this->assertSame('2026-11-09T10:00:00+01:00', $this->imZeitraum($ics, '2026-10-03', '2027-11-03', '2026-11-02 12:00')[0]);
+		// ein laufender Termin zählt noch als nächster
+		$this->assertSame('2026-11-02T10:00:00+01:00', $this->imZeitraum($ics, '2026-10-03', '2027-11-03', '2026-11-02 10:30')[0]);
+		// ohne jetzt der erste im Zeitraum
+		$this->assertSame('2026-10-05T10:00:00+02:00', $this->imZeitraum($ics, '2026-10-03', '2027-11-03')[0]);
+		// Zeitraum ganz in der Vergangenheit oder Serie zu Ende: der erste im Zeitraum, nie der erste der Serie
+		$this->assertSame('2026-06-01T10:00:00+02:00', $this->imZeitraum($ics, '2026-06-01', '2026-07-01', '2026-11-02 12:00')[0]);
+		$bisOktober = str_replace('FREQ=WEEKLY', 'FREQ=WEEKLY;UNTIL=20261020T000000Z', $ics);
+		$this->assertSame('2026-10-05T10:00:00+02:00', $this->imZeitraum($bisOktober, '2026-10-03', '2027-11-03', '2026-11-02 12:00')[0]);
+	}
+
+	public function testNichtImZeitraum(): void {
+		$this->assertNull($this->imZeitraum(self::ics(), '2026-11-06', '2026-12-01'));
+		$this->assertNull($this->imZeitraum(self::ics(), '2026-10-01', '2026-11-05'));
+		$this->assertNotNull($this->imZeitraum(self::ics(), '2026-11-05', '2026-11-06'));
+		$this->assertNull($this->imZeitraum(self::serie(str_replace('FREQ=WEEKLY', 'FREQ=WEEKLY;COUNT=3', self::WOECHENTLICH)), '2026-06-01', '2026-07-01'));
+		$this->assertNull($this->imZeitraum(self::serie(self::WOECHENTLICH), '2025-06-01', '2025-07-01'));
+	}
+
 	public function testGanztaegigerTermin(): void {
 		$ics = str_replace(
 			["DTSTART;TZID=Europe/Berlin:20261105T140000", "DTEND;TZID=Europe/Berlin:20261105T170000"],

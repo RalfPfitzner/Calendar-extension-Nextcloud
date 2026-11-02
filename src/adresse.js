@@ -13,7 +13,8 @@ export function adresseLesen() {
 	return zustand
 }
 
-export function adresseSchreiben(zustand, neuerEintrag) {
+/** Adresse (Pfad und Parameter) zu einem Zustand, z. B. für Links auf ein Formular (U-KAL-07). */
+export function adresseFuer(zustand) {
 	const parameter = new URLSearchParams()
 	for (const schluessel of SCHLUESSEL) {
 		const wert = zustand[schluessel]
@@ -25,7 +26,15 @@ export function adresseSchreiben(zustand, neuerEintrag) {
 		parameter.set(schluessel, String(wert))
 	}
 	const text = parameter.toString()
-	const ziel = window.location.pathname + (text ? '?' + text : '')
+	return window.location.pathname + (text ? '?' + text : '')
+}
+
+/**
+ * Schreibt den Zustand in die Adresse: `neuerEintrag` für Schritte des Nutzers (pushState), sonst wird der Eintrag
+ * ersetzt (replaceState, z. B. wenn der Server die Seite korrigiert, Q-KAL-07).
+ */
+export function adresseSchreiben(zustand, neuerEintrag) {
+	const ziel = adresseFuer(zustand)
 	if (neuerEintrag) {
 		window.history.pushState({ [INDEX]: eintragIndex() + 1 }, '', ziel)
 	} else {

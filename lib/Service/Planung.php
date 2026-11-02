@@ -9,7 +9,10 @@ use DateTimeInterface;
 use DateTimeZone;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VEvent;
+use Sabre\VObject\Property\ICalendar\DateTime;
 use Sabre\VObject\Reader;
+use Sabre\VObject\Recur\EventIterator;
+use Sabre\VObject\Recur\NoInstancesException;
 
 /**
  * Zuordnung der Planungsfelder zu Eigenschaften im Kalendertermin.
@@ -49,12 +52,20 @@ class Planung {
 	/**
 	 * Liest Termindaten und Planung aus einem Kalenderobjekt.
 	 *
-	 * @param DateTimeInterface|null $von  mit $bis: bei Serien den ersten Termin im Zeitraum ermitteln
+	 * Mit Zeitraum ($von und $bis) für die Liste: Der Termin muss im Zeitraum liegen oder hineinreichen (wie der
+	 * time-range-Filter von CalDAV), sonst kommt null. Bei Serien steht als Beginn und Ende ein Termin der Serie im
+	 * Zeitraum, nie der erste der Serie überhaupt: der nächste ab $jetzt, wenn es ihn im Zeitraum gibt (U-KAL-16),
+	 * sonst der erste im Zeitraum.
+	 *
+	 * @param DateTimeInterface|null $von  Beginn des Zeitraums (mit $bis)
+	 * @param DateTimeInterface|null $bis  Ende des Zeitraums, ausschließlich
 	 * @param DateTimeZone|null $zone Zone für „Floating“-Zeiten (ohne TZID und ohne Z), also die Ortszeit, in der
 	 *   die Oberfläche anzeigt; ohne Angabe die Zone von $von, sonst die PHP-Vorgabe (in Nextcloud UTC)
-	 * @return array<string,mixed>|null null, wenn das Objekt kein Termin ist
+	 * @param DateTimeInterface|null $jetzt bei Serien im Zeitraum: ab hier den nächsten Termin zeigen
+	 * @return array<string,mixed>|null null, wenn das Objekt kein Termin ist oder nicht im Zeitraum liegt
 	 */
-	public function lesen(string $ics, ?DateTimeInterface $von = null, ?DateTimeInterface $bis = null, ?DateTimeZone $zone = null): ?array {
+	public function lesen(string $ics, ?DateTimeInterface $von = null, ?DateTimeInterface $bis = null, ?DateTimeZone $zone = null,
+		?DateTimeInterface $jetzt = null): ?array {
 		$kalender = Reader::read($ics);
 		if (!$kalender instanceof VCalendar) {
 			return null;
@@ -73,10 +84,16 @@ class Planung {
 		$ende = $this->ende($termin, $ortszeit);
 		$serie = isset($termin->RRULE);
 
-		if ($serie && $von !== null && $bis !== null) {
-			$erster = $this->ersterImZeitraum($kalender, $von, $bis, $zone ?? $von->getTimezone());
-			if ($erster !== null) {
-				[$beginn, $ende] = $erster;
+		if ($von !== null && $bis !== null) {
+			$zone ??= $von->getTimezone();
+			if ($serie) {
+				$imZeitraum = $this->serienTermin($kalender, $termin, $von, $bis, $zone, $jetzt);
+				if ($imZeitraum === null) {
+					return null;
+				}
+				[$beginn, $ende] = $imZeitraum;
+			} elseif (!$this->einzelnImZeitraum($kalender, $von, $bis, $zone)) {
+				return null;
 			}
 		}
 
@@ -302,27 +319,233 @@ class Planung {
 		return null;
 	}
 
-	/** @return array{0:DateTimeImmutable,1:?DateTimeImmutable}|null */
-	private function ersterImZeitraum(VCalendar $kalender, DateTimeInterface $von, DateTimeInterface $bis, DateTimeZone $ortszeit): ?array {
-		try {
-			// Der dritte Parameter ist die Zone für Floating-Zeiten der Serie.
-			$aufgeloest = (clone $kalender)->expand($von, $bis, $ortszeit);
-		} catch (\Throwable) {
-			return null;
-		}
-		$erster = null;
-		foreach ($aufgeloest->select('VEVENT') as $ereignis) {
-			$beginn = $ereignis->DTSTART->getDateTime();
-			if ($erster === null || $beginn < $erster[0]) {
-				$erster = [$beginn, $this->ende($ereignis)];
+	/**
+	 * Einzeltermin (ohne RRULE) im Zeitraum: Prüfung wie der time-range-Filter von CalDAV (Sabre `isInTimeRange`), der
+	 * die Liste bis 1.0 im Backend gefiltert hat. Liegt nur eine Ausnahme ohne Serie im Objekt, zählt jede.
+	 */
+	private function einzelnImZeitraum(VCalendar $kalender, DateTimeInterface $von, DateTimeInterface $bis, DateTimeZone $zone): bool {
+		// isInTimeRange liest Floating-Zeiten in der Zone von $von.
+		$von = DateTimeImmutable::createFromInterface($von)->setTimezone($zone);
+		$bis = DateTimeImmutable::createFromInterface($bis)->setTimezone($zone);
+		foreach ($kalender->select('VEVENT') as $ereignis) {
+			if (isset($ereignis->DTSTART) && $ereignis->isInTimeRange($von, $bis)) {
+				return true;
 			}
 		}
-		if ($erster === null) {
+		return false;
+	}
+
+	/**
+	 * Termin einer Serie für die Liste (U-KAL-16): der nächste ab $jetzt, wenn er im Zeitraum beginnt, sonst der erste
+	 * im Zeitraum; null, wenn kein Termin der Serie im Zeitraum liegt.
+	 *
+	 * @return array{0:DateTimeImmutable,1:?DateTimeImmutable}|null
+	 */
+	private function serienTermin(VCalendar $kalender, VEvent $serie, DateTimeInterface $von, DateTimeInterface $bis,
+		DateTimeZone $ortszeit, ?DateTimeInterface $jetzt): ?array {
+		if ($jetzt !== null && $jetzt > $von && $jetzt < $bis) {
+			$naechster = $this->ersterAb($kalender, $serie, $jetzt, $bis, $ortszeit, $von->getTimezone());
+			if ($naechster !== null) {
+				return $naechster;
+			}
+		}
+		return $this->ersterAb($kalender, $serie, $von, $bis, $ortszeit, $von->getTimezone());
+	}
+
+	/**
+	 * Erster Termin der Serie, der nach $ab endet und vor $bis beginnt (Semantik wie `VCalendar::expand`, das bis 1.0
+	 * die ganze Serie im Zeitraum aufgelöst hat, P-KAL-01). Der EventIterator springt zu $ab (`fastForward`); bei
+	 * einfachen Regeln liegt der Beginn der Serie vorher schon kurz vor $ab (serienEreignisse), so dass auch endlose
+	 * tägliche Serien nicht Tag für Tag von ihrem Anfang an durchlaufen werden (P-KAL-06).
+	 *
+	 * Fehler im iCalendar (z. B. ungültige RRULE) gehen an den Aufrufer: Die Liste überspringt den Termin mit Eintrag
+	 * im Protokoll, wie bisher der Filter im Backend.
+	 *
+	 * @return array{0:DateTimeImmutable,1:?DateTimeImmutable}|null Beginn und Ende in $ausgabe
+	 */
+	private function ersterAb(VCalendar $kalender, VEvent $serie, DateTimeInterface $ab, DateTimeInterface $bis,
+		DateTimeZone $ortszeit, DateTimeZone $ausgabe): ?array {
+		$ganztags = !$serie->DTSTART->hasTime();
+		if ($ganztags) {
+			// Ganztägige Termine sind ein Datum ohne Zone, das in der Ortszeit gilt. Gerechnet wird in UTC (ohne
+			// Sommerzeit-Sprünge), dafür gelten $ab und $bis mit ihrer Wanduhrzeit in der Ortszeit. Das gibt dieselben
+			// Termine wie expand() in der Ortszeit, und der Beginn ist wie bisher UTC-Mitternacht des Tages.
+			$rechenzone = new DateTimeZone('UTC');
+			$ab = self::wanduhr($ab, $ortszeit);
+			$bis = self::wanduhr($bis, $ortszeit);
+		} else {
+			$rechenzone = $ortszeit;
+		}
+		$ereignisse = $this->serienEreignisse($kalender, $serie, $ab, $rechenzone, $ganztags ? $ortszeit : null);
+		try {
+			$iterator = new EventIterator($ereignisse, null, $rechenzone);
+		} catch (NoInstancesException) {
 			return null;
 		}
-		// expand() liefert UTC; wie bei Einzelterminen in der Zone des Zeitraums ausgeben.
-		$zone = $von->getTimezone();
-		return [$erster[0]->setTimezone($zone), $erster[1]?->setTimezone($zone)];
+		$iterator->fastForward($ab);
+		if (!$iterator->valid() || $iterator->getDtStart() >= $bis) {
+			return null;
+		}
+		$beginn = DateTimeImmutable::createFromInterface($iterator->getDtStart())->setTimezone(new DateTimeZone('UTC'));
+		// Ende wie bei einem einzelnen Termin aus DTEND oder DURATION, ohne beides keins. Maßgeblich ist die Ausnahme
+		// (RECURRENCE-ID), wenn der Termin eine ist, sonst die ursprüngliche Serie, nicht die vorgerückte Kopie.
+		$objekt = $iterator->getEventObject();
+		$quelle = in_array($objekt, array_slice($ereignisse, 1), true) ? $objekt : $serie;
+		if (isset($quelle->DTEND)) {
+			$ende = DateTimeImmutable::createFromInterface($iterator->getDtEnd());
+		} elseif (isset($quelle->DURATION)) {
+			$ende = $beginn->add($quelle->DURATION->getDateInterval());
+		} else {
+			$ende = null;
+		}
+		return [$beginn->setTimezone($ausgabe), $ende?->setTimezone($ausgabe)];
+	}
+
+	/** Dieselbe Wanduhrzeit wie $zeit in $zone, als UTC. */
+	private static function wanduhr(DateTimeInterface $zeit, DateTimeZone $zone): DateTimeImmutable {
+		$ort = DateTimeImmutable::createFromInterface($zeit)->setTimezone($zone);
+		return new DateTimeImmutable($ort->format('Y-m-d\\TH:i:s.u'), new DateTimeZone('UTC'));
+	}
+
+	/**
+	 * Die Ereignisse der Serie (Serie und Ausnahmen mit derselben UID) für den EventIterator.
+	 *
+	 * Bei einfachen Regeln rückt eine Kopie der Serie ihren Beginn um ganze Perioden bis kurz vor $ab vor: FREQ=DAILY
+	 * oder WEEKLY, ohne COUNT und ohne BYxxx außer BYDAY, ohne RDATE und EXRULE. Dort ist jeder um ganze Perioden
+	 * verschobene Beginn selbst ein Termin der Serie, und die Termine ab dem neuen Beginn sind genau die der
+	 * ursprünglichen Serie. Die Uhrzeit bleibt (Wanduhr in der Zone des Beginns), die Dauer in Sekunden auch; EXDATE,
+	 * Ausnahmen (RECURRENCE-ID) und UNTIL sind feste Zeitpunkte und bleiben, wie sie sind. Ohne Vorrücken zählt der
+	 * EventIterator jeden Termin ab dem Anfang der Serie und bricht nach 3 500 Terminen ab
+	 * (MaxInstancesExceededException), bei einer täglichen Serie also nach knapp zehn Jahren. Solche Serien, die nicht
+	 * vorgerückt werden können, fehlen in der Liste und landen im Protokoll (docs/KONZEPT.md).
+	 *
+	 * Bei ganztägigen Serien ($datumIn = Ortszeit) bekommt der EventIterator EXDATE und RECURRENCE-ID als Datum: Manche
+	 * Programme (Outlook) schreiben sie als DATE-TIME mit TZID, z. B. Mitternacht in Berlin; in UTC gerechnet wäre das
+	 * der Vortag, und Ausnahme bzw. Auslassung träfen keinen Termin der Serie.
+	 *
+	 * @return list<VEvent>
+	 */
+	private function serienEreignisse(VCalendar $kalender, VEvent $serie, DateTimeInterface $ab, DateTimeZone $rechenzone,
+		?DateTimeZone $datumIn = null): array {
+		$uid = (string)($serie->UID ?? '');
+		$ereignisse = [];
+		foreach ($kalender->select('VEVENT') as $ereignis) {
+			if ($ereignis !== $serie && isset($ereignis->{'RECURRENCE-ID'}) && (string)($ereignis->UID ?? '') === $uid) {
+				$ereignisse[] = $datumIn === null ? $ereignis : self::alsDatum($ereignis, $datumIn);
+			}
+		}
+		$erstes = $this->vorgerueckt($serie, $ab, $rechenzone) ?? $serie;
+		array_unshift($ereignisse, $datumIn === null ? $erstes : self::alsDatum($erstes, $datumIn));
+		return $ereignisse;
+	}
+
+	/**
+	 * Das Ereignis mit EXDATE und RECURRENCE-ID als Datum in $zone (siehe serienEreignisse); eine Kopie, wenn etwas
+	 * umzuschreiben ist, sonst das Ereignis selbst.
+	 */
+	private static function alsDatum(VEvent $ereignis, DateTimeZone $zone): VEvent {
+		$umschreiben = false;
+		foreach (['EXDATE', 'RECURRENCE-ID'] as $name) {
+			foreach ($ereignis->select($name) as $wert) {
+				$umschreiben = $umschreiben || ($wert instanceof DateTime && $wert->hasTime());
+			}
+		}
+		if (!$umschreiben) {
+			return $ereignis;
+		}
+		$kopie = clone $ereignis;
+		foreach (['EXDATE', 'RECURRENCE-ID'] as $name) {
+			$tage = [];
+			foreach ($kopie->select($name) as $wert) {
+				if ($wert instanceof DateTime) {
+					foreach ($wert->getDateTimes($zone) as $zeit) {
+						$tage[] = $zeit->setTimezone($zone)->format('Ymd');
+					}
+				}
+			}
+			if ($tage === []) {
+				continue;
+			}
+			unset($kopie->{$name});
+			$tage = array_values(array_unique($tage));
+			// RECURRENCE-ID ist ein einzelner Wert, EXDATE darf mehrere tragen.
+			$kopie->add($name, $name === 'EXDATE' ? $tage : $tage[0], ['VALUE' => 'DATE']);
+		}
+		return $kopie;
+	}
+
+	/** Kopie der Serie mit vorgerücktem Beginn (siehe serienEreignisse), null, wenn das nicht geht oder nichts bringt. */
+	private function vorgerueckt(VEvent $serie, DateTimeInterface $ab, DateTimeZone $rechenzone): ?VEvent {
+		if (count($serie->select('RRULE')) !== 1 || isset($serie->RDATE) || isset($serie->EXRULE)) {
+			return null;
+		}
+		$teile = $serie->RRULE->getParts();
+		if (array_diff(array_keys($teile), ['FREQ', 'INTERVAL', 'UNTIL', 'WKST', 'BYDAY']) !== []) {
+			return null;
+		}
+		$intervall = (int)($teile['INTERVAL'] ?? 1);
+		$frequenz = strtoupper((string)($teile['FREQ'] ?? ''));
+		if ($intervall < 1 || !in_array($frequenz, ['DAILY', 'WEEKLY'], true)) {
+			return null;
+		}
+		$beginn = DateTimeImmutable::createFromInterface($serie->DTSTART->getDateTime($rechenzone));
+		// Täglich ohne BYDAY: jeder Tag im Abstand INTERVAL. Mit BYDAY (täglich oder wöchentlich) und wöchentlich:
+		// ganze Wochen, damit der Wochentag des Beginns und der Wochenrhythmus bleiben. Steht der Wochentag des Beginns
+		// nicht in BYDAY, zählt der EventIterator den (vorgerückten) Beginn trotzdem als Termin; das schadet nicht, weil
+		// er mindestens zwei Tage vor $ab endet und fastForward ihn überspringt.
+		$periode = $frequenz === 'DAILY' && !isset($teile['BYDAY']) ? $intervall : 7 * $intervall;
+		if (isset($teile['BYDAY'])
+			&& array_diff(array_map('strtoupper', (array)$teile['BYDAY']), ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']) !== []) {
+			return null;
+		}
+		$dauer = $this->dauer($serie, $beginn, $rechenzone);
+		// Der neue Beginn endet mindestens zwei Tage vor $ab (Puffer für Sommerzeit und Rundung), so dass fastForward
+		// ihn überspringt.
+		$tage = intdiv(max(0, $ab->getTimestamp() - $beginn->getTimestamp() - $dauer), 86400) - 2;
+		$sprung = intdiv(max(0, $tage), $periode) * $periode;
+		// Fällt die Uhrzeit am Zieltag in die Lücke der Sommerzeit-Umstellung, eine Periode früher versuchen.
+		// Eigenheit von Sabre bei Serien um 02:xx: Der EventIterator rechnet von Termin zu Termin weiter und bleibt nach
+		// dem ersten Umstellungstag dauerhaft bei 03:xx, expand() zeigt dann 03:xx. Die vorgerückte Kopie beginnt nach
+		// der Lücke wieder um 02:xx, wie es RFC 5545 verlangt (die Wanduhrzeit der Serie gilt an jedem Tag); hier weicht
+		// die Liste also bewusst von expand() ab.
+		$neu = null;
+		foreach ([$sprung, $sprung - $periode] as $versuch) {
+			$kandidat = $beginn->modify("+{$versuch} days");
+			if ($versuch > 0 && $kandidat->format('H:i:s') === $beginn->format('H:i:s')) {
+				$neu = $kandidat;
+				break;
+			}
+		}
+		if ($neu === null) {
+			return null;
+		}
+		$kopie = clone $serie;
+		$floating = $serie->DTSTART->hasTime() && $serie->DTSTART->isFloating();
+		$kopie->DTSTART->setDateTime($neu, $floating);
+		if (isset($kopie->DTEND) || isset($kopie->DURATION)) {
+			// Gleiche Dauer in Sekunden wie die ursprüngliche Serie (der EventIterator rechnet mit dieser Dauer).
+			unset($kopie->DURATION, $kopie->DTEND);
+			$ende = $neu->setTimestamp($neu->getTimestamp() + $dauer);
+			$kopie->add('DTEND', $ende);
+			if (!$serie->DTSTART->hasTime()) {
+				$kopie->DTEND['VALUE'] = 'DATE';
+				$kopie->DTEND->setDateTime($ende);
+			} else {
+				$kopie->DTEND->setDateTime($ende, $floating);
+			}
+		}
+		return $kopie;
+	}
+
+	/** Dauer eines Termins der Serie in Sekunden, so wie der EventIterator sie rechnet. */
+	private function dauer(VEvent $serie, DateTimeImmutable $beginn, DateTimeZone $rechenzone): int {
+		if (isset($serie->DTEND)) {
+			return $serie->DTEND->getDateTime($rechenzone)->getTimestamp() - $beginn->getTimestamp();
+		}
+		if (isset($serie->DURATION)) {
+			return $beginn->add($serie->DURATION->getDateInterval())->getTimestamp() - $beginn->getTimestamp();
+		}
+		return $serie->DTSTART->hasTime() ? 0 : 86400;
 	}
 
 	private function setzen(VEvent $ereignis, string $eigenschaft, string $wert): void {

@@ -2,7 +2,7 @@
 
 ## [Unveröffentlicht]
 
-Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-alle.md`): Teil 1 Server, Admin, CI (#21), Teil 2 Formular und App-Rahmen.
+Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-alle.md`): Teil 1 Server, Admin, CI (#21), Teil 2 Formular und App-Rahmen (#22), Teil 3 Liste und Performance.
 
 ### Hinweise zum Update
 - Neue Eigenschaft `X-CALPLAN-LINK` im Termin: Sie merkt sich die zuletzt geschriebene Link-Zeile der Beschreibung. Der Feldschlüssel `link` ist deshalb reserviert; ein gespeichertes Schema mit einem Feld `link` gilt als ungültig (die App nimmt dann die Vorgabe und meldet es im Protokoll) und muss vorher umbenannt werden. Sonst keine neuen Einstellungen.
@@ -11,6 +11,13 @@ Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-al
 - Ein Feldschema über 64 KiB lässt sich nicht mehr speichern (vorher wurde es angenommen und beim nächsten Laden still durch die Vorgabe ersetzt).
 
 ### Behoben
+- **Ganztägige Serien** mit EXDATE oder RECURRENCE-ID als Uhrzeit mit Zeitzone (z. B. aus Outlook) zeigen ausgefallene und verschobene Termine richtig; alte Serien „Mo–Fr“, deren Beginn auf einem Wochenende liegt, fallen nicht mehr aus der Liste.
+- **Barrierefreiheit der Liste:** Spaltenzuordnung für Bildschirmleser auch auf schmalen Bildschirmen richtig; eine Fehlermeldung verschwindet, wenn man zur angezeigten Liste zurückkehrt.
+- **Terminliste ohne seitliches Scrollen:** Die Spalte „Planung“ ist ab 1280 Pixel sichtbar, auf Tablet und Handy stehen Ort, Listenfelder und Planung unter dem Titel (U-KAL-02).
+- **Serien** zeigen in der Liste den nächsten Termin, nicht mehr einen vergangenen; endlose tägliche Serien fallen auch nach vielen Jahren nicht mehr aus der Liste (U-KAL-16, P-KAL-06).
+- **Sortierung:** Termine mit verschiedenen Zeitzonen und ganztägige Termine stehen in der richtigen Reihenfolge (Q-KAL-04).
+- **Suche** findet nur, was in Liste und Formular zu sehen ist (Titel, Ort, Planungsfelder, Datum als TT.MM.JJJJ), unabhängig von Groß-/Kleinschreibung und Schreibweise der Umlaute; Link, UID und Beschreibung treffen nicht mehr. Ein Leerzeichen am Ende der Eingabe bleibt stehen (Q-KAL-06, U-KAL-11, Q-KAL-08).
+- **Zurück-Taste** nach einer vom Server korrigierten Seite hängt nicht mehr fest (Q-KAL-07).
 - **Ort-Auswahl** wieder richtig angeordnet: Knöpfe direkt bei der Beschriftung, als Gruppe „Ort“, per Tastatur bedienbar (U-KAL-01).
 - **Rückmeldung nach dem Speichern:** Erfolg und Fehler erscheinen neben dem Knopf und werden angesagt, der Fokus geht auf die Meldung bzw. das betroffene Feld; die Erfolgsmeldung verschwindet bei der nächsten Änderung (U-KAL-03, Q-KAL-11).
 - **Zurück-, Vor-Taste und „Zur Liste“** fragen nach, wenn Eingaben noch nicht gespeichert sind; „Weiter bearbeiten“ behält alles samt Verlauf, „Verwerfen“ hinterlässt keine doppelten Einträge im Verlauf; beim Schließen warnt der Browser (U-KAL-04).
@@ -38,6 +45,10 @@ Review-Befunde vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-al
 - **Release-Freigabe:** Der Job, der signiert und hochlädt, läuft in der Umgebung `release`. Mit Prüfer und Tag-Ruleset (Anleitung in `docs/REPO-EINSTELLUNGEN.md`) erzeugt nur noch ein Admin ein Release.
 
 ### Geändert
+- **Liste deutlich schneller:** Serien werden nicht mehr Tag für Tag durchgerechnet, jeder Termin wird nur einmal geladen und gelesen, die Kalenderliste je Anfrage einmal aufgebaut; mit 2 000 Terminen antwortet die Liste in 0,8 statt 5,6 Sekunden. Überholte Anfragen beim Tippen werden abgebrochen (P-KAL-01, P-KAL-02, P-KAL-03, P-KAL-04). Die Datenbank sucht mit Anfang und Ende des Zeitraums vor, gelesen werden nur Termine im Zeitraum; enge oder vergangene Zeiträume sind dadurch besonders schnell, der Speicher je Anfrage steigt etwas.
+- **Termintitel sind Links:** Mittelklick und Strg-Klick öffnen einen neuen Tab (U-KAL-07).
+- **Blättern und leere Suche:** Knöpfe mit Namen („Erste Seite“, „Seite 3“ …); eine leere Suche nennt den Suchbegriff und bietet „Suche zurücksetzen“; Laden und Trefferzahl werden angesagt (U-KAL-12, U-KAL-14, U-KAL-15).
+- **Kalenderauswahl** ohne Geburtstagskalender und Kalender anderer Apps (U-KAL-21).
 - **Fehlermeldungen** bei zu vielen Anfragen, abgelaufener Anmeldung, fehlender Berechtigung, Wartung und Serverfehlern statt pauschal „Verbindung fehlgeschlagen“ (U-KAL-06).
 - **Fokus und Ansage** beim Wechsel zwischen Liste und Formular; nur noch eine Hauptlandmarke (U-KAL-08, U-KAL-13).
 - **Nur-Lesen-Ansicht** als gut lesbare Liste, per Tastatur erreichbar (U-KAL-09).

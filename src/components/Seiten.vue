@@ -1,24 +1,27 @@
 <template>
 	<nav class="seiten" aria-label="Seiten">
+		<!-- Knöpfe mit Namen statt nur Zeichen, aktuelle Seite mit aria-current (U-KAL-12). -->
 		<div v-if="seiten > 1" class="seiten__knoepfe">
-			<button :disabled="seite === 1" title="Erste Seite" @click="$emit('seite', 1)">
-				«
+			<button type="button" :disabled="seite === 1" aria-label="Erste Seite" title="Erste Seite" @click="$emit('seite', 1)">
+				<span aria-hidden="true">«</span>
 			</button>
-			<button :disabled="seite === 1" title="Vorherige Seite" @click="$emit('seite', seite - 1)">
-				‹
+			<button type="button" :disabled="seite === 1" aria-label="Vorige Seite" title="Vorige Seite" @click="$emit('seite', seite - 1)">
+				<span aria-hidden="true">‹</span>
 			</button>
 			<button v-for="nummer in nummern"
 				:key="nummer"
+				type="button"
 				:class="{ aktiv: nummer === seite }"
+				:aria-label="'Seite ' + nummer"
 				:aria-current="nummer === seite ? 'page' : undefined"
 				@click="$emit('seite', nummer)">
 				{{ nummer }}
 			</button>
-			<button :disabled="seite === seiten" title="Nächste Seite" @click="$emit('seite', seite + 1)">
-				›
+			<button type="button" :disabled="seite === seiten" aria-label="Nächste Seite" title="Nächste Seite" @click="$emit('seite', seite + 1)">
+				<span aria-hidden="true">›</span>
 			</button>
-			<button :disabled="seite === seiten" title="Letzte Seite" @click="$emit('seite', seiten)">
-				»
+			<button type="button" :disabled="seite === seiten" aria-label="Letzte Seite" title="Letzte Seite" @click="$emit('seite', seiten)">
+				<span aria-hidden="true">»</span>
 			</button>
 		</div>
 		<div class="seiten__info">
@@ -61,6 +64,7 @@ const nummern = computed(() => {
 
 	&__knoepfe {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 4px;
 
 		button {

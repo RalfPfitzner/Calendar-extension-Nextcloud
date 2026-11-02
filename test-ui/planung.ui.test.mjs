@@ -161,7 +161,7 @@ test('Handy-Breite: kein waagerechtes Scrollen der Seite', async () => {
 test('Blättern: Seite steht in der Adresse und übersteht Neuladen', async () => {
 	await seite.goto(BASIS + '/index.php/apps/calendar_planning/')
 	await seite.getByText('Lötworkshop Grundschule').waitFor()
-	await seite.getByRole('button', { name: '2', exact: true }).click()
+	await seite.getByRole('button', { name: 'Seite 2', exact: true }).click()
 	await seite.waitForURL(/seite=2/)
 	await seite.getByText(/Seite 2 von 2/).waitFor()
 	assert.equal(await seite.locator('tbody tr').count(), 8)
