@@ -12,6 +12,7 @@ Ziel: Nach dem Merge ist nichts mehr nachzuziehen. **Ralf setzt das Tag selbst**
 - Neue Funktion, neue Nextcloud-Hauptversion, neue Einstellung → Minor; nur Korrekturen → Patch. Ein Wechsel der App-ID oder des Datenformats (Präfix der Eigenschaften, Schlüssel in `schema/vorgabe.json`) → Major.
 - Ralf nennt die Version meist selbst; sonst vorschlagen und kurz begründen.
 - Ist ein Release-Lauf gescheitert (kein Paket), wird das Tag nicht verschoben oder neu gesetzt, sondern die nächste Patch-Version vorbereitet, mit Hinweis im Changelog (Regel aus `docs/STANDARDS.md` im Repo `ralfpfitzner/test`).
+- Ausnahme: Scheitert nur der Job `veroeffentlichen` mit „ist schon veröffentlicht, das Paket wird nicht ersetzt“, war das Release beim Lauf schon veröffentlicht (so geschehen mit `v1.1.0` am 02.11.2026: Tag über die Release-Maske gesetzt und gleich veröffentlicht). Paket und Attestierung sind dann gebaut, keine neue Version nötig: Ralf setzt das Release zurück auf Entwurf (`gh release edit vx.y.z --draft=true`, oder das Release löschen, das Tag bleibt) und startet im Lauf „Re-run failed jobs“.
 
 ## 2. Prüfen, bevor etwas geschrieben wird
 
@@ -66,4 +67,5 @@ Dazu `composer test:unit`, wenn PHP geändert wurde.
 
 - Eigener Branch, ein Commit „Release x.y.z“ mit kurzer Aufzählung im Text, PR-Titel „Release x.y.z“.
 - CI abwarten; wenn grün und Ralf zugestimmt hat: mergen (Squash).
-- Abschließend Ralf in einem Satz sagen, dass er jetzt taggen kann: `git tag vx.y.z <merge-commit> && git push origin vx.y.z`. Der Release-Workflow baut dann das Paket mit Attestierung und SHA-256 und hängt es an einen Release-Entwurf. Danach prüfen, dass der Lauf grün ist und das Paket am Release hängt.
+- Abschließend Ralf in einem Satz sagen, dass er jetzt taggen kann: `git tag vx.y.z <merge-commit> && git push origin vx.y.z`. **Nur das Tag setzen, kein Release veröffentlichen:** Den Entwurf legt der Release-Workflow selbst an (mit Paket, SHA-256 und Prüfbefehl in den Notes). Wer lieber die Weboberfläche nimmt: in der Release-Maske das Tag anlegen und **„Save draft“** wählen, nicht „Publish release“; ein schon veröffentlichtes Release ersetzt der Workflow nicht (Schutz gegen nachträglich getauschte Pakete).
+- Danach prüfen, dass der Lauf grün ist und das Paket am Entwurf hängt; der Job `veroeffentlichen` wartet auf Ralfs Freigabe der Umgebung `release` („Review deployments“). Erst dann veröffentlicht Ralf den Entwurf.
