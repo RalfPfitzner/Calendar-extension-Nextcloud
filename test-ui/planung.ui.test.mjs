@@ -8,7 +8,7 @@ import { chromium } from 'playwright-core'
 const BASIS = process.env.NC_URL ?? 'http://localhost:8080'
 const NUTZER = process.env.NC_USER ?? 'admin'
 const PASSWORT = process.env.NC_PASS ?? 'Admin-Test-123'
-const EVA_PASSWORT = process.env.NC_EVA_PASS ?? 'Eva-Test-12345'
+const KIM_PASSWORT = process.env.NC_KIM_PASS ?? 'Kim-Test-12345'
 
 let browser
 let seite
@@ -17,7 +17,7 @@ const fehler = []
 /** Legt die Testdaten über tools/testdaten.sh an; unter Windows läuft das Skript über die Git Bash. */
 function testdatenAnlegen() {
 	const [befehl, argumente] = process.platform === 'win32' ? ['bash', ['tools/testdaten.sh']] : ['tools/testdaten.sh', []]
-	execFileSync(befehl, argumente, { env: { ...process.env, NC_URL: BASIS, NC_USER: NUTZER, NC_PASS: PASSWORT, NC_EVA_PASS: EVA_PASSWORT }, stdio: 'inherit' })
+	execFileSync(befehl, argumente, { env: { ...process.env, NC_URL: BASIS, NC_USER: NUTZER, NC_PASS: PASSWORT, NC_KIM_PASS: KIM_PASSWORT }, stdio: 'inherit' })
 }
 
 before(async () => {
@@ -101,7 +101,7 @@ test('Planung erfassen, speichern und nach Neuladen wiederfinden', async () => {
 	await seite.getByText('Externer Ort', { exact: true }).click()
 	assert.equal(await seite.getByRole('radio', { name: 'Externer Ort' }).isChecked(), true)
 	await seite.getByLabel('Externer Ort – Adresse').fill('Grundschule Musterstadt\nSchulstraße 1')
-	await seite.getByLabel('Zuständig intern').fill('Eva')
+	await seite.getByLabel('Zuständig intern').fill('Kim')
 	await seite.getByLabel('E-Mail').fill('kontakt@example.org')
 	await seite.getByLabel('Benötigte Ausstattung / Technik').fill('Lötstationen, 3D-Drucker')
 	await seite.getByRole('button', { name: 'Speichern' }).click()
@@ -109,7 +109,7 @@ test('Planung erfassen, speichern und nach Neuladen wiederfinden', async () => {
 
 	await seite.reload()
 	await seite.getByRole('heading', { name: /Planung: Lötworkshop/ }).waitFor()
-	assert.equal(await seite.getByLabel('Zuständig intern').inputValue(), 'Eva')
+	assert.equal(await seite.getByLabel('Zuständig intern').inputValue(), 'Kim')
 	assert.equal(await seite.getByLabel('Externer Ort – Adresse').inputValue(), 'Grundschule Musterstadt\nSchulstraße 1')
 	assert.equal(await seite.getByLabel('Benötigte Ausstattung / Technik').inputValue(), 'Lötstationen, 3D-Drucker')
 	assert.deepEqual(fehler, [])
@@ -133,7 +133,7 @@ test('Zurück zur Liste zeigt den Termin als erfasst', async () => {
 	await seite.getByRole('button', { name: /Zur Liste/ }).click()
 	const zeile = seite.locator('tr', { hasText: 'Lötworkshop Grundschule' })
 	await zeile.getByText('erfasst').waitFor()
-	assert.match(await zeile.innerText(), /Eva/)
+	assert.match(await zeile.innerText(), /Kim/)
 	assert.deepEqual(fehler, [])
 })
 
@@ -176,9 +176,9 @@ test('Blättern: Seite steht in der Adresse und übersteht Neuladen', async () =
 test('Lesefreigabe: private Termine fehlen, Formular nur zum Lesen', async () => {
 	const kontext = await browser.newContext()
 	const tab = await kontext.newPage()
-	const evaFehler = []
-	tab.on('pageerror', (e) => evaFehler.push(e.message))
-	await anmelden(tab, 'eva', EVA_PASSWORT)
+	const kimFehler = []
+	tab.on('pageerror', (e) => kimFehler.push(e.message))
+	await anmelden(tab, 'kim', KIM_PASSWORT)
 	await tab.goto(BASIS + '/index.php/apps/calendar_planning/?pro_seite=50')
 	await tab.getByText('Lötworkshop Grundschule').waitFor()
 	const text = await tab.locator('.planung').innerText()
@@ -191,7 +191,7 @@ test('Lesefreigabe: private Termine fehlen, Formular nur zum Lesen', async () =>
 	// U-KAL-09: Werte als Beschreibungsliste in normaler Schriftfarbe, kein gesperrtes Feld; gegliedert durch h3.
 	assert.equal(await tab.locator('.formular').locator('input, textarea, select').count(), 0)
 	const eintrag = tab.locator('.formular__eintrag', { has: tab.getByRole('term').filter({ hasText: /^Zuständig intern$/ }) })
-	assert.equal((await eintrag.getByRole('definition').innerText()).trim(), 'Eva')
+	assert.equal((await eintrag.getByRole('definition').innerText()).trim(), 'Kim')
 	const farben = await eintrag.getByRole('definition').evaluate((e) => [getComputedStyle(e).color, getComputedStyle(e.previousElementSibling).color])
 	assert.equal(farben[0], farben[1], 'Wert in der Schriftfarbe der Bezeichnung, nicht blass')
 	// Die Liste selbst ist kein Tab-Halt (Lesen mit den Lesetasten); jede Gruppe steht unter einer h3.
@@ -200,7 +200,7 @@ test('Lesefreigabe: private Termine fehlen, Formular nur zum Lesen', async () =>
 	assert.equal(await liste.getAttribute('aria-labelledby'), null)
 	assert.equal(await liste.evaluate((e) => e.previousElementSibling?.tagName), 'H3')
 	assert.equal(await tab.locator('.formular dl').count(), await tab.locator('.formular h3').count())
-	assert.deepEqual(evaFehler, [])
+	assert.deepEqual(kimFehler, [])
 	await kontext.close()
 })
 
@@ -230,7 +230,7 @@ test('Kalender-App: Bearbeiten des Termins lässt die Planung stehen', async () 
 		return antwort.text()
 	}
 	const vorher = await ics()
-	assert.match(vorher, /X-CALPLAN-ZUSTAENDIG:Eva/)
+	assert.match(vorher, /X-CALPLAN-ZUSTAENDIG:Kim/)
 	const [, jahr, monat, tag] = vorher.match(/DTSTART;TZID=Europe\/Berlin:(\d{4})(\d{2})(\d{2})/)
 
 	// Englische Oberfläche, damit die Bezeichnungen der Kalender-App fest sind.

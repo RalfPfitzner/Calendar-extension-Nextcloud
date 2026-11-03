@@ -1,6 +1,6 @@
 # Kalender-Planung (Calendar-extension-Nextcloud) – Hinweise für Claude
 
-Nextcloud-App zur Veranstaltungsplanung: Die Planungsdaten zu einem Termin werden direkt im Kalendertermin gepflegt. Die App ist organisationsneutral; Standardort, Kalender-Vorbelegung und Linktext setzt der Admin. Entscheidungen der Umsetzung, Datenformat und offene Punkte: `docs/KONZEPT.md`. Die Anforderungen des ersten Nutzers (Planungs-Chat vom 20.10.2026) liegen unverändert in `docs/historie/info.md` (nicht ändern). Sprache in Code-Kommentaren, Commits, Doku und Antworten: Deutsch.
+Nextcloud-App zur Veranstaltungsplanung: Die Planungsdaten zu einem Termin werden direkt im Kalendertermin gepflegt. Die App ist organisationsneutral; Standardort, Kalender-Vorbelegung und Linktext setzt der Admin. Entscheidungen der Umsetzung, Datenformat und offene Punkte: `docs/KONZEPT.md`. Die Anforderungen des ersten Nutzers (Planungs-Chat vom 20.10.2026) liegen in `docs/historie/info.md` (nicht ändern; einzige Änderung: Name der Anforderin am 02.11.2026 entfernt). Sprache in Code-Kommentaren, Commits, Doku und Antworten: Deutsch.
 
 ## Architektur
 
@@ -29,7 +29,7 @@ Listen seitenweise, scrollen in eigenem Bereich mit stehendem Tabellenkopf, daru
 ## Versionen und Releases
 
 - Version steht in `appinfo/info.xml` **und** `package.json` (gleich halten), Änderungen in `CHANGELOG.md`.
-- Änderungen immer per Pull Request. **Tag setzt Ralf selbst**; der Release-Workflow baut dann `calendar_planning-<version>.tar.gz` (`tools/paket.sh`) und hängt es an einen Release-Entwurf. Die Release-Vorbereitung (Version in `appinfo/info.xml`, `package.json`, `package-lock.json`, CHANGELOG-Abschnitt) folgt dem Skill `release-vorbereitung`, immer vor dem Tag; sonst bricht der Release-Workflow ab und es gibt kein Paket.
+- Änderungen immer per Pull Request. **Tag setzt Ralf selbst**; der Release-Workflow baut dann `calendar_planning-<version>.tar.gz` (`tools/paket.sh`) und hängt es an einen Release-Entwurf (nur das Tag setzen bzw. in der Release-Maske „Save draft“; ein schon veröffentlichtes Release ersetzt der Workflow nicht). Die Release-Vorbereitung (Version in `appinfo/info.xml`, `package.json`, `package-lock.json`, CHANGELOG-Abschnitt) folgt dem Skill `release-vorbereitung`, immer vor dem Tag; sonst bricht der Release-Workflow ab und es gibt kein Paket.
 - Standards für Repository, CI und sichere Programmierung aller Projekte: `docs/STANDARDS.md` im Repo `ralfpfitzner/test` (Vorlagen unter `vorlagen/`). Neue Regeln aus diesem Projekt dort nachtragen; Abweichungen hier mit Begründung.
 
 ## Datenschutz

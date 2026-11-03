@@ -4,9 +4,9 @@ Zusammenfassung des Planungs-Chats vom 20.10.2026 als Grundlage für die Weitera
 
 ## 1. Ziel und Zweck
 
-- **Nutzer:** Makerspace Mayen-Koblenz (MSP). Die Anforderung kommt von Eva Pfitzner.
+- **Nutzer:** Makerspace Mayen-Koblenz (MSP). Die Anforderung kommt von der Anforderin (Name aus Datenschutzgründen entfernt).
 - **Zweck:** Veranstaltungen sollen vollständig im Nextcloud-Kalender („MSP Cloud Kalender“) geplant werden. Bisher läuft das über eine Word-Vorlage („Vorlage blanko Planung alle Veranstaltungen.docx“). Die Planungsdaten aus dieser Vorlage sollen direkt im Kalender gepflegt werden.
-- **Ausgangsanfragen von Eva** (Mails vom 20.10.2026):
+- **Ausgangsanfragen der Anforderin** (Mails vom 20.10.2026):
   - 12:09: Wunsch nach einem Export des Kalenders, z. B. als Excel nach Datum mit allen Einträgen. Die Überschriften würden reichen.
   - 14:58: Zusendung der Word-Vorlage mit dem Wunsch, diese direkt in den Cloud-Kalender einzubinden.
 
@@ -79,7 +79,7 @@ Die konkreten Namen der X-Eigenschaften sind noch nicht festgelegt.
 | „Maschinen/Tools“ als Freitext | Entscheidung von Ralf. |
 | Entwicklung durch Claude, Test durch Ralf auf der eigenen Instanz | Claude hat keinen Zugriff auf die Nextcloud-Instanz. |
 
-**Hinweis Datenschutz:** Die Kontaktdaten Externer sieht jeder, der Zugriff auf den MSP-Kalender hat. Das ist in Ordnung, solange der Kalender nur intern geteilt ist. Eva sollte das wissen.
+**Hinweis Datenschutz:** Die Kontaktdaten Externer sieht jeder, der Zugriff auf den MSP-Kalender hat. Das ist in Ordnung, solange der Kalender nur intern geteilt ist. Die Anforderin sollte das wissen.
 
 ## 7. Offene Fragen
 

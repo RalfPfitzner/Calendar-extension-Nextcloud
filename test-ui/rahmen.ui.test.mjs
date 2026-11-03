@@ -10,7 +10,7 @@ import { chromium } from 'playwright-core'
 const BASIS = process.env.NC_URL ?? 'http://localhost:8080'
 const NUTZER = process.env.NC_USER ?? 'admin'
 const PASSWORT = process.env.NC_PASS ?? 'Admin-Test-123'
-const EVA_PASSWORT = process.env.NC_EVA_PASS ?? 'Eva-Test-12345'
+const KIM_PASSWORT = process.env.NC_KIM_PASS ?? 'Kim-Test-12345'
 const APP = BASIS + '/index.php/apps/calendar_planning/'
 
 let browser
@@ -20,7 +20,7 @@ const fehler = []
 
 before(async () => {
 	const [befehl, argumente] = process.platform === 'win32' ? ['bash', ['tools/testdaten.sh']] : ['tools/testdaten.sh', []]
-	execFileSync(befehl, argumente, { env: { ...process.env, NC_URL: BASIS, NC_USER: NUTZER, NC_PASS: PASSWORT, NC_EVA_PASS: EVA_PASSWORT }, stdio: 'inherit' })
+	execFileSync(befehl, argumente, { env: { ...process.env, NC_URL: BASIS, NC_USER: NUTZER, NC_PASS: PASSWORT, NC_KIM_PASS: KIM_PASSWORT }, stdio: 'inherit' })
 	browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, headless: !process.env.SICHTBAR, slowMo: process.env.SICHTBAR ? 300 : 0 })
 	kontext = await browser.newContext({ viewport: { width: 1280, height: 900 } })
 	seite = await kontext.newPage()

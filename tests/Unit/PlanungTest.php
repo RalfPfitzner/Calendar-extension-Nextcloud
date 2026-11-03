@@ -61,7 +61,7 @@ class PlanungTest extends TestCase {
 		$planung = $this->eingabe([
 			'ort_extern' => true,
 			'ort' => "Grundschule Musterstadt\nSchulstraße 1",
-			'zustaendig' => 'Eva',
+			'zustaendig' => 'Kim',
 			'kontakt_email' => 'lehrer@example.org',
 			'hinweise' => "Zeile 1\r\nZeile 2; mit, Komma und \\ Backslash",
 			'teilnehmende' => '24',
@@ -72,10 +72,10 @@ class PlanungTest extends TestCase {
 		$this->assertTrue($daten['geplant']);
 		$this->assertTrue($daten['ort_extern']);
 		$this->assertSame("Grundschule Musterstadt\nSchulstraße 1", $daten['ort']);
-		$this->assertSame('Eva', $daten['zustaendig']);
+		$this->assertSame('Kim', $daten['zustaendig']);
 		$this->assertSame("Zeile 1\nZeile 2; mit, Komma und \\ Backslash", $daten['hinweise']);
 		$this->assertSame('24', $daten['teilnehmende']);
-		$this->assertStringContainsString('X-CALPLAN-ZUSTAENDIG:Eva', $neu);
+		$this->assertStringContainsString('X-CALPLAN-ZUSTAENDIG:Kim', $neu);
 		$this->assertStringNotContainsString('X-MSP-', $neu);
 	}
 
@@ -178,12 +178,12 @@ class PlanungTest extends TestCase {
 		$this->assertTrue($daten['serie']);
 		$this->assertSame('2026-11-12T15:00:00+01:00', $daten['beginn']);
 
-		$neu = $this->planung->schreiben($ics, $this->eingabe(['titel' => 'Lötkurs', 'zustaendig' => 'Eva']), null);
+		$neu = $this->planung->schreiben($ics, $this->eingabe(['titel' => 'Lötkurs', 'zustaendig' => 'Kim']), null);
 		$ereignisse = Reader::read($neu)->select('VEVENT');
 		$this->assertCount(2, $ereignisse);
 		foreach ($ereignisse as $ereignis) {
 			$this->assertSame('Lötkurs', (string)$ereignis->SUMMARY);
-			$this->assertSame('Eva', (string)$ereignis->{'X-CALPLAN-ZUSTAENDIG'});
+			$this->assertSame('Kim', (string)$ereignis->{'X-CALPLAN-ZUSTAENDIG'});
 		}
 		// Der abweichende Ort der Ausnahme bleibt, der der Serie wird gesetzt.
 		$orte = array_map(fn ($e) => (string)$e->LOCATION, $ereignisse);
@@ -396,12 +396,12 @@ class PlanungTest extends TestCase {
 	public function testPruefenSteuerzeichen(): void {
 		$planung = $this->eingabe([
 			'titel' => "Löt\r\nworkshop\tGrundschule\x00\x1b",
-			'kontakt_name' => "Eva\nMuster",
+			'kontakt_name' => "Kim\nMuster",
 			'hinweise' => "Zeile 1\r\nZeile 2\tTab\x00\x07Ende",
 		]);
 		// Einzeilig: Umbruch und Tab werden Leerzeichen, andere Steuerzeichen verschwinden.
 		$this->assertSame('Löt workshop Grundschule', $planung['titel']);
-		$this->assertSame('Eva Muster', $planung['kontakt_name']);
+		$this->assertSame('Kim Muster', $planung['kontakt_name']);
 		// Mehrzeilig: Umbruch und Tab bleiben, andere Steuerzeichen verschwinden.
 		$this->assertSame("Zeile 1\nZeile 2\tTabEnde", $planung['hinweise']);
 	}
@@ -653,14 +653,14 @@ class PlanungTest extends TestCase {
 		$rlo = "\u{202E}";
 		$planung = $this->eingabe([
 			'titel' => "Löt{$rlo}workshop\u{200B}\u{2066}Grund\u{2069}schule\u{FEFF}",
-			'kontakt_name' => "\u{200E}Eva\u{200F} Muster\u{061C}\u{00AD}",
+			'kontakt_name' => "\u{200E}Kim\u{200F} Muster\u{061C}\u{00AD}",
 			'hinweise' => "Zeile\u{202A} 1\nZeile\u{2060} 2\u{202C}",
-			'kontakt_email' => "eva\u{200B}@example.org",
+			'kontakt_email' => "kim\u{200B}@example.org",
 		]);
 		$this->assertSame('LötworkshopGrundschule', $planung['titel']);
-		$this->assertSame('Eva Muster', $planung['kontakt_name']);
+		$this->assertSame('Kim Muster', $planung['kontakt_name']);
 		$this->assertSame("Zeile 1\nZeile 2", $planung['hinweise']);
-		$this->assertSame('eva@example.org', $planung['kontakt_email']);
+		$this->assertSame('kim@example.org', $planung['kontakt_email']);
 		// Emoji-Folgen und Schriften mit Verbindern bleiben ganz.
 		$this->assertSame("Team \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}", $this->eingabe(['titel' => "Team \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"])['titel']);
 		// Nur unsichtbare Zeichen gelten als leer.
@@ -673,13 +673,13 @@ class PlanungTest extends TestCase {
 		$tags = "\u{E0001}\u{E0067}\u{E0065}\u{E0068}\u{E007F}";
 		$planung = $this->eingabe([
 			'titel' => "Löt{$tags}workshop\u{034F}",
-			'kontakt_name' => "\u{115F}Eva\u{1160} \u{3164}Muster\u{FFA0}",
+			'kontakt_name' => "\u{115F}Kim\u{1160} \u{3164}Muster\u{FFA0}",
 			// Zeilen- und Absatztrenner: einzeilig zu Leerzeichen, mehrzeilig zu Umbrüchen.
 			'kontakt_organisation' => "Verein\u{2028}Nord",
 			'hinweise' => "Zeile 1\u{2028}Zeile 2\u{2029}Zeile 3",
 		]);
 		$this->assertSame('Lötworkshop', $planung['titel']);
-		$this->assertSame('Eva Muster', $planung['kontakt_name']);
+		$this->assertSame('Kim Muster', $planung['kontakt_name']);
 		$this->assertSame('Verein Nord', $planung['kontakt_organisation']);
 		$this->assertSame("Zeile 1\nZeile 2\nZeile 3", $planung['hinweise']);
 		$e = new Einstellungen("Vereins\u{2029}heim\u{E0041}", '', "Info\u{3164}:");

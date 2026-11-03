@@ -34,9 +34,9 @@ for i in $(seq 1 30); do
 done
 echo "Testdaten in $KALENDER angelegt."
 
-# Zweites Konto „eva“ mit Lesefreigabe, zum Prüfen von Rechten und privaten Terminen.
-if [[ -n ${NC_EVA_PASS:-} ]]; then
+# Zweites Konto „kim“ mit Lesefreigabe, zum Prüfen von Rechten und privaten Terminen.
+if [[ -n ${NC_KIM_PASS:-} ]]; then
 	curl "${auth[@]}" -X POST "$KALENDER/" -H 'Content-Type: application/xml' --data \
-		'<?xml version="1.0"?><o:share xmlns:d="DAV:" xmlns:o="http://owncloud.org/ns"><o:set><d:href>principal:principals/users/eva</d:href></o:set></o:share>'
-	echo "Kalender für eva nur zum Lesen freigegeben."
+		'<?xml version="1.0"?><o:share xmlns:d="DAV:" xmlns:o="http://owncloud.org/ns"><o:set><d:href>principal:principals/users/kim</d:href></o:set></o:share>'
+	echo "Kalender für kim nur zum Lesen freigegeben."
 fi
