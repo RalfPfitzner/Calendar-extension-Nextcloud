@@ -3,7 +3,7 @@
 # Danach laufen die Browser-Tests mit `npm run test:ui`. Nur für Tests, nie gegen eine echte Instanz.
 # Aufruf: tools/test-nextcloud.sh          (Container „calplan-nc“ auf Port 8080, Nextcloud 35.0.2;
 #                                         andere mit NC_NAME und NC_PORT, z. B. für parallele Arbeitskopien)
-#         NC_VERSION=34.0.5 KALENDER_VERSION=6.6.3 tools/test-nextcloud.sh   (andere Hauptversion)
+#         NC_VERSION=34.0.5 tools/test-nextcloud.sh   (andere Hauptversion)
 #         tools/test-nextcloud.sh --stopp  (Container entfernen)
 # Image und Kalender-App sind festgelegt (STANDARDS A2.10): das Image per Digest, die Kalender-App per SHA-256,
 # beide je Version in nc_digest und kalender_summe unten. Eine neue Version dort eintragen (Werte ermitteln mit
@@ -15,7 +15,7 @@ set -euo pipefail
 NAME=${NC_NAME:-calplan-nc}
 PORT=${NC_PORT:-8080}
 NC_VERSION=${NC_VERSION:-35.0.2}
-KALENDER_VERSION=${KALENDER_VERSION:-6.6.4}
+KALENDER_VERSION=${KALENDER_VERSION:-6.6.5}
 KALENDER_APP=https://github.com/nextcloud-releases/calendar/releases/download/v$KALENDER_VERSION/calendar-v$KALENDER_VERSION.tar.gz
 # Impersonate mit kaputtem Admin-Template (`<div id="impersonate"</div>`, in 5.0.0 für 34 und 6.0.0 für 35): Regression
 # dafür, dass die Einstellungsseite in einem eigenen Bereich steht und nicht von fremden Formularen verschluckt wird.
@@ -49,6 +49,7 @@ kalender_summe() {
 	case $1 in
 		6.6.3) echo bda8f38c609b2182533887f67eacb543edf437066d0356912ac6324c94743080 ;;
 		6.6.4) echo 0557b6b5852a467cf3f746e59d56478d227f78bf7a66357b30dfc10cae4c7e3c ;;
+		6.6.5) echo e3afbc2a10db87920f5347279423422411010550a809b2902c0e8cf2f2492107 ;;
 	esac
 }
 # SHA-256 des Release-Pakets von Impersonate je Version

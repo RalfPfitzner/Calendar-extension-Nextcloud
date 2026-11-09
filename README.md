@@ -11,7 +11,7 @@ Nextcloud-App für Vereine, Werkstätten und andere Gruppen, die Veranstaltungen
 
 Umsetzung, Datenformat und offene Punkte: [`docs/KONZEPT.md`](docs/KONZEPT.md). Die Vorgeschichte (Anforderungen des ersten Nutzers, Stand 20.10.2026) liegt unverändert in [`docs/historie/info.md`](docs/historie/info.md).
 
-**Stand: Nextcloud 34 und 35.** Die CI testet jede Änderung in Test-Nextclouds 34.0.5 (Kalender-App 6.6.3) und 35.0.2 (Kalender-App 6.6.4).
+**Stand: Nextcloud 34 und 35.** Die CI testet jede Änderung in Test-Nextclouds 34.0.5 und 35.0.2, beide mit Kalender-App 6.6.5.
 
 ## Installation
 
@@ -76,7 +76,7 @@ composer install && composer test:unit          # PHP-Tests (braucht PHP 8.3 fü
 tools/api-check.sh 35.0.2                        # PHPStan gegen die Nextcloud-Schnittstellen dieser Version
 npm ci && npm run build                          # Oberfläche bauen
 tools/test-nextcloud.sh                          # Nextcloud 35.0.2 + Kalender-App in Docker, Port 8080
-NC_VERSION=34.0.5 KALENDER_VERSION=6.6.3 tools/test-nextcloud.sh   # die andere unterstützte Hauptversion
+NC_VERSION=34.0.5 tools/test-nextcloud.sh   # die andere unterstützte Hauptversion
 npm run test:ui                                  # Browser-Tests
 tools/test-nextcloud.sh --stopp                  # Container entfernen
 tools/paket.sh                                   # build/calendar_planning-<version>.tar.gz

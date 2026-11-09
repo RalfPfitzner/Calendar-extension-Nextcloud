@@ -129,9 +129,9 @@ jobs:
       matrix:
         include:
           - nextcloud: 34.0.5
-            kalender: 6.6.3
+            kalender: 6.6.5
           - nextcloud: 35.0.2
-            kalender: 6.6.4
+            kalender: 6.6.5
     env:
       NC_VERSION: ${{ matrix.nextcloud }}
       KALENDER_VERSION: ${{ matrix.kalender }}
