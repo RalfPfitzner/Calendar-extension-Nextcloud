@@ -2,6 +2,9 @@
 
 ## [Unveröffentlicht]
 
+### Geändert
+- Tests und CI laufen mit der Kalender-App 6.6.5 (05.11.2026) in Nextcloud 34.0.5 und 35.0.2 statt mit 6.6.3 bzw. 6.6.4; 6.6.5 ist die auf der Instanz installierte Version. Prüfsumme in `tools/test-nextcloud.sh` hinterlegt. Keine Änderung an der App.
+
 ## [1.1.0] - 2026-11-02
 
 Alle 46 Befunde aus dem Code-Review vom 29.10.2026 (Plan `docs/superpowers/plans/2026-11-02-review-alle.md`): Server, Admin, CI und Release (#21), Formular und App-Rahmen (#22), Liste und Performance (#23); dazu der eigene Einstellungsbereich aus 1.0.1 (#20), der nicht getaggt wurde.
