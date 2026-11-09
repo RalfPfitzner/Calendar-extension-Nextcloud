@@ -18,6 +18,8 @@ Nextcloud-App zur Veranstaltungsplanung: Die Planungsdaten zu einem Termin werde
 
 ## Listen in Oberflächen
 
+Einzelheiten, häufige Fehler und Pflicht-Tests: Skill `listen-seitenweise` (`.claude/skills/listen-seitenweise/`, Vorlage im Repo `ralfpfitzner/test`).
+
 Listen seitenweise, scrollen in eigenem Bereich mit stehendem Tabellenkopf, darunter « ‹ 1 2 3 › (höchstens 5 Zahlen) und „Seite x von y · n Einträge · pro Seite 25/50/100“; Seite und Seitengröße in der Adresse. Die Terminliste blättert auf dem Server (`seite`, `pro_seite`; Antwort mit `seite`, `seiten`, `pro_seite`, `gesamt`). Bedingte Teile nie als `null`/`undefined` in die Ausgabe geben (UI-Test prüft, dass kein „null“ erscheint).
 
 ## Testen
