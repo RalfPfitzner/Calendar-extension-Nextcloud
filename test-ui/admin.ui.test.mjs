@@ -407,9 +407,9 @@ test('U-KAL-19: Fehlermeldungen nennen Feld und Abschnitt ab 1 mit Bezeichnung',
 	// In der Oberfläche: doppelter Schlüssel eines neuen Feldes.
 	const bereich = await adminSeite()
 	await bereich.getByRole('button', { name: '+ Feld in Abschnitt 1' }).click()
-	await bereich.getByLabel('Bezeichnung Feld 4 in Abschnitt 1').pressSequentially('Raum')
+	await bereich.getByLabel('Bezeichnung Feld 6 in Abschnitt 1').pressSequentially('Raum')
 	await bereich.getByRole('button', { name: 'Felder speichern' }).click()
-	await bereich.getByText('Feld 4 in Abschnitt 1 („Raum“): Der Schlüssel „raum“ ist schon bei Feld 3 in Abschnitt 1 („Raum-Informationen“) vergeben.').waitFor()
+	await bereich.getByText('Feld 6 in Abschnitt 1 („Raum“): Der Schlüssel „raum“ ist schon bei Feld 5 in Abschnitt 1 („Raum-Informationen“) vergeben.').waitFor()
 	assert.deepEqual(await gespeichertesSchema(), vorgabe)
 })
 
@@ -422,23 +422,25 @@ test('U-KAL-20: Feld entfernen mit Rückgängig, Fokus und Ansage beim Verschieb
 	await bereich.getByRole('button', { name: 'Feld 1 in Abschnitt 1 („Zuständig intern“) nach unten' }).click()
 	assert.equal(await bereich.getByLabel('Bezeichnung Feld 2 in Abschnitt 1').inputValue(), 'Zuständig intern')
 	assert.equal(await fokusLabel(), 'Feld 2 in Abschnitt 1 („Zuständig intern“) nach unten')
-	await seite.waitForFunction(() => document.querySelector('#calendar-planning-admin .editor [role=status]').textContent.includes('jetzt Feld 2 von 3'))
-	assert.match(await ansage.textContent(), /Feld „Zuständig intern“ ist jetzt Feld 2 von 3 in Abschnitt 1\./)
+	await seite.waitForFunction(() => document.querySelector('#calendar-planning-admin .editor [role=status]').textContent.includes('jetzt Feld 2 von 5'))
+	assert.match(await ansage.textContent(), /Feld „Zuständig intern“ ist jetzt Feld 2 von 5 in Abschnitt 1\./)
 	// Am Rand: der Knopf in Richtung ist gesperrt, der Fokus geht auf den Gegenknopf.
-	await seite.keyboard.press('Enter')
-	assert.equal(await bereich.getByLabel('Bezeichnung Feld 3 in Abschnitt 1').inputValue(), 'Zuständig intern')
-	assert.equal(await fokusLabel(), 'Feld 3 in Abschnitt 1 („Zuständig intern“) nach oben')
+	for (let schritt = 0; schritt < 3; schritt++) {
+		await seite.keyboard.press('Enter')
+	}
+	assert.equal(await bereich.getByLabel('Bezeichnung Feld 5 in Abschnitt 1').inputValue(), 'Zuständig intern')
+	assert.equal(await fokusLabel(), 'Feld 5 in Abschnitt 1 („Zuständig intern“) nach oben')
 
 	// Entfernen: Hinweis mit „Rückgängig“, Fokus auf die Bezeichnung des nachrückenden Feldes.
-	await bereich.getByRole('button', { name: 'Feld 1 in Abschnitt 1 („Parkmöglichkeiten / Zufahrt / Anlieferung“) entfernen' }).click()
+	await bereich.getByRole('button', { name: 'Feld 3 in Abschnitt 1 („Parkmöglichkeiten / Zufahrt / Anlieferung“) entfernen' }).click()
 	await bereich.getByText('Feld „Parkmöglichkeiten / Zufahrt / Anlieferung“ entfernt.').waitFor()
-	assert.equal(await bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1').inputValue(), 'Raum-Informationen')
-	assert.equal(await hatFokus(bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1')), true)
+	assert.equal(await bereich.getByLabel('Bezeichnung Feld 3 in Abschnitt 1').inputValue(), 'Raum-Informationen')
+	assert.equal(await hatFokus(bereich.getByLabel('Bezeichnung Feld 3 in Abschnitt 1')), true)
 	assert.match(await ansage.textContent(), /entfernt\. „Rückgängig“ holt es zurück\./)
 	await bereich.getByRole('button', { name: 'Rückgängig' }).click()
-	assert.equal(await bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1').inputValue(), 'Parkmöglichkeiten / Zufahrt / Anlieferung')
-	assert.equal(await bereich.getByLabel('Schlüssel Feld 1 in Abschnitt 1').inputValue(), 'zufahrt')
-	assert.equal(await hatFokus(bereich.getByLabel('Bezeichnung Feld 1 in Abschnitt 1')), true)
+	assert.equal(await bereich.getByLabel('Bezeichnung Feld 3 in Abschnitt 1').inputValue(), 'Parkmöglichkeiten / Zufahrt / Anlieferung')
+	assert.equal(await bereich.getByLabel('Schlüssel Feld 3 in Abschnitt 1').inputValue(), 'zufahrt')
+	assert.equal(await hatFokus(bereich.getByLabel('Bezeichnung Feld 3 in Abschnitt 1')), true)
 	assert.equal(await bereich.getByRole('button', { name: 'Rückgängig' }).count(), 0)
 
 	// Letztes Feld eines Abschnitts entfernen: Fokus auf „Rückgängig“; Speichern fragt nach, weil ein Schlüssel wegfällt.
