@@ -9,6 +9,7 @@ use DateTimeInterface;
 use DateTimeZone;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VEvent;
+use Sabre\VObject\Parameter;
 use Sabre\VObject\Property\ICalendar\DateTime;
 use Sabre\VObject\Reader;
 use Sabre\VObject\Recur\EventIterator;
@@ -339,7 +340,8 @@ class Planung {
 			$eigenschaft->setDateTime($wanduhr, true);
 			return;
 		}
-		$tzid = isset($vorlage['TZID']) ? (string)$vorlage['TZID'] : null;
+		$parameter = $vorlage->offsetGet('TZID');
+		$tzid = $parameter instanceof Parameter ? (string)$parameter->getValue() : null;
 		$eigenschaft->setDateTime($zeit->setTimezone($tzid === null ? new DateTimeZone('UTC') : $vorlage->getDateTime()->getTimezone()));
 		if ($tzid !== null) {
 			// Den Namen der Zone so lassen, wie er war (z. B. „W. Europe Standard Time“ aus Outlook mit eigener VTIMEZONE).
