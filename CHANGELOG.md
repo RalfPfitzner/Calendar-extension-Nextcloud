@@ -2,11 +2,17 @@
 
 ## [Unveröffentlicht]
 
+## [1.2.0] - 2026-11-17
+
+Wünsche aus dem Makerspace vom 16.11.2026: Uhrzeit im Planungsformular und Felder „Eingetragen von/am“.
+
 ### Hinweise zum Update
+- Ordner `calendar_planning` durch das Paket `calendar_planning-1.2.0.tar.gz` ersetzen, dann `occ upgrade`. Einstellungen und Planungsdaten bleiben. Herkunft prüfen mit `gh attestation verify calendar_planning-1.2.0.tar.gz --repo RalfPfitzner/Calendar-extension-Nextcloud`.
+- Unterstützt weiter Nextcloud 34 und 35. Keine neuen Einstellungen.
 - Die Vorgabe und die Makerspace-Vorlage haben zwei neue Felder „Eingetragen von“ (`eingetragen_von`) und „Eingetragen am“ (`eingetragen_am`). Wer ein eigenes Schema gespeichert hat, legt sie auf der Einstellungsseite selbst an (Abschnitt „Grunddaten“, Typ Text bzw. Datum); das gespeicherte Schema ändert das Update nicht.
 - Die Schlüssel `uhrzeit_beginn`, `uhrzeit_ende`, `zeit_aenderbar` und `einladung` sind jetzt reserviert. Ein gespeichertes Schema mit einem dieser Schlüssel gilt als ungültig (die App nimmt dann die Vorgabe und meldet es im Protokoll) und muss vorher umbenannt werden.
 
-### Neu
+### Hinzugefügt
 - **Uhrzeit im Formular:** Beginn und Ende eines Termins lassen sich als Uhrzeit direkt im Planungsformular ändern; das Datum bleibt und wird weiter in der Kalender-App geändert. Nicht bei Serien, ganztägigen Terminen und Terminen mit Eingeladenen; dort sagt das Formular, warum (Wunsch vom 16.11.2026).
 - **Felder „Eingetragen von“ und „Eingetragen am“** in der Vorgabe und der Makerspace-Vorlage, zum Ausfüllen von Hand (Wunsch vom 16.11.2026).
 
