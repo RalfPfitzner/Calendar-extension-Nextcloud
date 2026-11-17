@@ -20,9 +20,9 @@ class SchemaTest extends TestCase {
 		return ['abschnitte' => [['titel' => 'Test', 'felder' => $felder]]];
 	}
 
-	public function testVorgabeHatDieSechzehnFelderMitGueltigenEigenschaftsnamen(): void {
+	public function testVorgabeHatDieAchtzehnFelderMitGueltigenEigenschaftsnamen(): void {
 		$schema = Schema::vorgabe();
-		$this->assertCount(16, $schema->felder);
+		$this->assertCount(18, $schema->felder);
 		$this->assertCount(5, $schema->abschnitte);
 		$this->assertSame(['zustaendig', 'kontakt_organisation', 'teilnehmende'], array_column($schema->listenFelder(), 'key'));
 		foreach ($schema->felder as $key => $feld) {
@@ -35,7 +35,7 @@ class SchemaTest extends TestCase {
 	public function testPresetLaedtUndNenntDieAlteBezeichnung(): void {
 		$preset = Schema::ausDatei(__DIR__ . '/../../schema/preset-msp.json');
 		$this->assertSame('Benötigte Maschinen / Tools', $preset->felder['maschinen']['label']);
-		$this->assertCount(16, $preset->felder);
+		$this->assertCount(18, $preset->felder);
 	}
 
 	public function testJsonHinUndZurueckIstStabil(): void {

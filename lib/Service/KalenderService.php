@@ -312,7 +312,8 @@ class KalenderService {
 			if ($objekt['etag'] !== $etag) {
 				throw new PlanungException('Der Termin wurde inzwischen geändert. Es wurde nichts gespeichert; die Eingaben bleiben im Formular stehen.', 409);
 			}
-			$neu = $this->planung->schreiben($objekt['calendardata'], $planung, $this->link($kalenderId, $objektUri));
+			$neu = $this->planung->schreiben($objekt['calendardata'], $planung, $this->link($kalenderId, $objektUri), null,
+				new DateTimeZone(self::ZONE));
 			$this->backend->updateCalendarObject($kalenderId, $objektUri, $neu);
 		});
 		return $this->termin($uid, $kalenderId, $objektUri);

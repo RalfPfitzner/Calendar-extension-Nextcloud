@@ -2,6 +2,14 @@
 
 ## [Unveröffentlicht]
 
+### Hinweise zum Update
+- Die Vorgabe und die Makerspace-Vorlage haben zwei neue Felder „Eingetragen von“ (`eingetragen_von`) und „Eingetragen am“ (`eingetragen_am`). Wer ein eigenes Schema gespeichert hat, legt sie auf der Einstellungsseite selbst an (Abschnitt „Grunddaten“, Typ Text bzw. Datum); das gespeicherte Schema ändert das Update nicht.
+- Die Schlüssel `uhrzeit_beginn`, `uhrzeit_ende`, `zeit_aenderbar` und `einladung` sind jetzt reserviert. Ein gespeichertes Schema mit einem dieser Schlüssel gilt als ungültig (die App nimmt dann die Vorgabe und meldet es im Protokoll) und muss vorher umbenannt werden.
+
+### Neu
+- **Uhrzeit im Formular:** Beginn und Ende eines Termins lassen sich als Uhrzeit direkt im Planungsformular ändern; das Datum bleibt und wird weiter in der Kalender-App geändert. Nicht bei Serien, ganztägigen Terminen und Terminen mit Eingeladenen; dort sagt das Formular, warum (Wunsch vom 16.11.2026).
+- **Felder „Eingetragen von“ und „Eingetragen am“** in der Vorgabe und der Makerspace-Vorlage, zum Ausfüllen von Hand (Wunsch vom 16.11.2026).
+
 ### Geändert
 - Tests und CI laufen mit der Kalender-App 6.6.5 (05.11.2026) in Nextcloud 34.0.5 und 35.0.2 statt mit 6.6.3 bzw. 6.6.4; 6.6.5 ist die auf der Instanz installierte Version. Prüfsumme in `tools/test-nextcloud.sh` hinterlegt. Keine Änderung an der App.
 
