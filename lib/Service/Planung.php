@@ -9,6 +9,7 @@ use DateTimeInterface;
 use DateTimeZone;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VEvent;
+use Sabre\VObject\Parameter;
 use Sabre\VObject\Property\ICalendar\DateTime;
 use Sabre\VObject\Reader;
 use Sabre\VObject\Recur\EventIterator;
@@ -99,6 +100,8 @@ class Planung {
 
 		$vorgabe = $this->einstellungen->ortVorgabe;
 		$ort = trim((string)($termin->LOCATION ?? ''));
+		$einladung = isset($termin->ATTENDEE);
+		$uhrzeitZone = $zone ?? new DateTimeZone('UTC');
 		$daten = [
 			'uid' => (string)($termin->UID ?? ''),
 			'titel' => (string)($termin->SUMMARY ?? ''),
@@ -106,6 +109,11 @@ class Planung {
 			'ende' => $ende?->format(DATE_ATOM),
 			'ganztags' => $ganztags,
 			'serie' => $serie,
+			// Uhrzeit im Formular (Wunsch vom 16.11.2026, docs/KONZEPT.md §2): Beginn und Ende als HH:MM in der Ortszeit.
+			'uhrzeit_beginn' => $ganztags || $beginn === null ? '' : $beginn->setTimezone($uhrzeitZone)->format('H:i'),
+			'uhrzeit_ende' => $ganztags || $ende === null ? '' : $ende->setTimezone($uhrzeitZone)->format('H:i'),
+			'zeit_aenderbar' => $this->zeitAenderbar($kalender, $termin),
+			'einladung' => $einladung,
 			'ort_extern' => $ort !== '' && $ort !== $vorgabe,
 			'ort' => $ort === '' ? $vorgabe : $ort,
 			'beschreibung' => (string)($termin->DESCRIPTION ?? ''),
@@ -124,12 +132,15 @@ class Planung {
 	/**
 	 * Schreibt die Planung in das Kalenderobjekt und gibt das neue iCalendar zurück.
 	 *
-	 * Termin-Zeiten, Teilnehmende und alle fremden Eigenschaften bleiben unverändert.
+	 * Teilnehmende und alle fremden Eigenschaften bleiben unverändert. Die Uhrzeit von Beginn und Ende ändert sich nur,
+	 * wenn sie in $planung anders steht als im Termin (siehe zeitPruefen); das Datum bleibt immer.
 	 *
 	 * @param array<string,mixed> $planung geprüfte Formularwerte (siehe pruefen())
 	 * @param string|null $link Adresse für „Planung öffnen“ in der Beschreibung, null = nicht ergänzen
+	 * @param DateTimeZone|null $zone Ortszeit der Oberfläche, in der die Uhrzeiten gelten; ohne Angabe UTC
 	 */
-	public function schreiben(string $ics, array $planung, ?string $link, ?DateTimeInterface $jetzt = null): string {
+	public function schreiben(string $ics, array $planung, ?string $link, ?DateTimeInterface $jetzt = null,
+		?DateTimeZone $zone = null): string {
 		$kalender = Reader::read($ics);
 		if (!$kalender instanceof VCalendar) {
 			throw new PlanungException('Kein Kalenderobjekt');
@@ -139,6 +150,11 @@ class Planung {
 			throw new PlanungException('Kein Termin im Kalenderobjekt');
 		}
 		$this->optionenPruefen($termin, $planung);
+		// Erst alles prüfen, dann ändern: Eine ungültige Uhrzeit darf nichts halb geschrieben zurücklassen.
+		$zeiten = $this->zeitPruefen($kalender, $termin, $planung, $zone ?? new DateTimeZone('UTC'));
+		if ($zeiten !== null) {
+			$this->zeitSetzen($termin, $zeiten[0], $zeiten[1], $zone ?? new DateTimeZone('UTC'));
+		}
 		$jetzt = DateTimeImmutable::createFromInterface($jetzt ?? new DateTimeImmutable())->setTimezone(new DateTimeZone('UTC'));
 
 		$alterTitel = (string)($termin->SUMMARY ?? '');
@@ -196,10 +212,141 @@ class Planung {
 				throw new PlanungException('Bei einem externen Ort fehlt die Adresse');
 			}
 		}
+		foreach (self::UHRZEITEN as $schluessel => $label) {
+			$planung[$schluessel] = $this->uhrzeit($eingabe, $schluessel, $label);
+		}
 		foreach ($this->einstellungen->schema->felder as $schluessel => $feld) {
 			$planung[$schluessel] = $this->feldPruefen($eingabe, $schluessel, $feld);
 		}
 		return $planung;
+	}
+
+	/** Uhrzeit-Felder des Formulars mit ihrer Bezeichnung (Schlüssel in Schema::RESERVIERT). */
+	public const UHRZEITEN = ['uhrzeit_beginn' => 'Uhrzeit Beginn', 'uhrzeit_ende' => 'Uhrzeit Ende'];
+
+	/**
+	 * Uhrzeit als HH:MM, '' für leer, null wenn die Eingabe sie nicht enthält (dann bleibt die Zeit des Termins).
+	 * Sekunden (HH:MM:SS, manche Browser) werden abgeschnitten.
+	 *
+	 * @param array<string,mixed> $eingabe
+	 */
+	private function uhrzeit(array $eingabe, string $schluessel, string $label): ?string {
+		$wert = $eingabe[$schluessel] ?? null;
+		if ($wert === null) {
+			return null;
+		}
+		if (!is_string($wert)) {
+			throw new PlanungException("„{$label}“ ist kein Text");
+		}
+		$wert = trim($wert);
+		if ($wert === '') {
+			return '';
+		}
+		if (preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?\z/', $wert) !== 1) {
+			throw new PlanungException("„{$label}“ muss eine Uhrzeit im Format HH:MM sein");
+		}
+		return substr($wert, 0, 5);
+	}
+
+	/**
+	 * Ob die Uhrzeit im Formular geändert werden darf: nur bei einem einzelnen Termin mit Uhrzeit, also nicht bei
+	 * Serien (die Zeit gälte für alle Termine), Ausnahmen einer Serie und ganztägigen Terminen, und nicht bei Terminen
+	 * mit Teilnehmenden. Die App schreibt am CalDAV-Server vorbei, Eingeladene bekämen von einer neuen Uhrzeit nichts
+	 * mit; das übernimmt die Kalender-App.
+	 */
+	private function zeitAenderbar(VCalendar $kalender, VEvent $termin): bool {
+		return count($kalender->select('VEVENT')) === 1
+			&& isset($termin->DTSTART) && $termin->DTSTART->hasTime()
+			&& !isset($termin->RRULE) && !isset($termin->RDATE) && !isset($termin->{'RECURRENCE-ID'})
+			&& !isset($termin->ATTENDEE);
+	}
+
+	/**
+	 * Neuer Beginn und neues Ende aus den Uhrzeiten der Planung, null wenn sich nichts ändert. Das Datum bleibt das des
+	 * Termins in $zone (bei mehrtägigen Terminen auch das des Endes).
+	 *
+	 * @param array<string,mixed> $planung
+	 * @return array{0:DateTimeImmutable,1:?DateTimeImmutable}|null
+	 * @throws PlanungException (Code 400) bei Uhrzeiten, die sich hier nicht setzen lassen
+	 */
+	private function zeitPruefen(VCalendar $kalender, VEvent $termin, array $planung, DateTimeZone $zone): ?array {
+		$neuBeginn = $planung['uhrzeit_beginn'] ?? null;
+		$neuEnde = $planung['uhrzeit_ende'] ?? null;
+		if (!is_string($neuBeginn) && !is_string($neuEnde)) {
+			return null;
+		}
+		$ganztags = !isset($termin->DTSTART) || !$termin->DTSTART->hasTime();
+		$beginn = $ganztags ? null : $termin->DTSTART->getDateTime($zone)->setTimezone($zone);
+		$ende = $ganztags ? null : $this->ende($termin, $zone)?->setTimezone($zone);
+		$neuBeginn = is_string($neuBeginn) ? $neuBeginn : (string)$beginn?->format('H:i');
+		$neuEnde = is_string($neuEnde) ? $neuEnde : (string)$ende?->format('H:i');
+		if ($neuBeginn === (string)$beginn?->format('H:i') && $neuEnde === (string)$ende?->format('H:i')) {
+			return null;
+		}
+		if ($beginn === null || !$this->zeitAenderbar($kalender, $termin)) {
+			throw new PlanungException('Die Uhrzeit dieses Termins lässt sich nur in der Kalender-App ändern');
+		}
+		[$labelBeginn, $labelEnde] = array_values(self::UHRZEITEN);
+		if ($neuBeginn === '') {
+			throw new PlanungException("„{$labelBeginn}“ fehlt");
+		}
+		$neuerBeginn = self::amTag($beginn, $neuBeginn, $zone, $labelBeginn);
+		if ($neuEnde === '') {
+			if ($ende !== null) {
+				throw new PlanungException("„{$labelEnde}“ fehlt");
+			}
+			return [$neuerBeginn, null];
+		}
+		// Ohne bisheriges Ende endet der Termin am Tag des Beginns.
+		$neuesEnde = self::amTag($ende ?? $beginn, $neuEnde, $zone, $labelEnde);
+		if ($neuesEnde <= $neuerBeginn) {
+			throw new PlanungException("„{$labelEnde}“ muss nach dem Beginn liegen");
+		}
+		return [$neuerBeginn, $neuesEnde];
+	}
+
+	/** $uhrzeit (HH:MM) am Tag von $tag in $zone; 400, wenn es die Uhrzeit dort nicht gibt (Sommerzeit-Lücke). */
+	private static function amTag(DateTimeImmutable $tag, string $uhrzeit, DateTimeZone $zone, string $label): DateTimeImmutable {
+		$zeit = new DateTimeImmutable($tag->setTimezone($zone)->format('Y-m-d') . ' ' . $uhrzeit, $zone);
+		if ($zeit->format('H:i') !== $uhrzeit) {
+			throw new PlanungException("„{$label}“: {$uhrzeit} Uhr gibt es an diesem Tag wegen der Zeitumstellung nicht");
+		}
+		return $zeit;
+	}
+
+	/**
+	 * Schreibt neuen Beginn und neues Ende in der Form, in der der Termin sie hatte: mit derselben TZID, in UTC oder
+	 * ohne Zone (Floating, gilt in $zone). DURATION wird zu DTEND. SEQUENCE zählt hoch (RFC 5545 §3.8.7.4).
+	 */
+	private function zeitSetzen(VEvent $termin, DateTimeImmutable $beginn, ?DateTimeImmutable $ende, DateTimeZone $zone): void {
+		$vorlage = $termin->DTSTART;
+		$endeVorlage = isset($termin->DTEND) ? $termin->DTEND : $vorlage;
+		self::zeitSchreiben($vorlage, $beginn, $vorlage, $zone);
+		if ($ende !== null) {
+			$form = clone $endeVorlage;
+			unset($termin->DURATION);
+			if (!isset($termin->DTEND)) {
+				$termin->add('DTEND', $ende);
+			}
+			self::zeitSchreiben($termin->DTEND, $ende, $form, $zone);
+		}
+		$termin->SEQUENCE = (int)(string)($termin->SEQUENCE ?? '0') + 1;
+	}
+
+	/** Setzt $zeit in $eigenschaft so, wie $vorlage geschrieben war (TZID, UTC oder Floating). */
+	private static function zeitSchreiben(DateTime $eigenschaft, DateTimeImmutable $zeit, DateTime $vorlage, DateTimeZone $zone): void {
+		if ($vorlage->isFloating()) {
+			$wanduhr = new DateTimeImmutable($zeit->setTimezone($zone)->format('Y-m-d H:i:s'), new DateTimeZone('UTC'));
+			$eigenschaft->setDateTime($wanduhr, true);
+			return;
+		}
+		$parameter = $vorlage->offsetGet('TZID');
+		$tzid = $parameter instanceof Parameter ? (string)$parameter->getValue() : null;
+		$eigenschaft->setDateTime($zeit->setTimezone($tzid === null ? new DateTimeZone('UTC') : $vorlage->getDateTime()->getTimezone()));
+		if ($tzid !== null) {
+			// Den Namen der Zone so lassen, wie er war (z. B. „W. Europe Standard Time“ aus Outlook mit eigener VTIMEZONE).
+			$eigenschaft['TZID'] = $tzid;
+		}
 	}
 
 	/** @param array{key:string,label:string,typ:string,pflicht:bool,maxlen:int,optionen:list<string>,inListe:bool} $feld */

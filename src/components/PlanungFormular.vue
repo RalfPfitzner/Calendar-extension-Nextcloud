@@ -17,7 +17,7 @@
 				<span v-if="termin.serie"> · Terminserie: die Planung gilt für alle Termine der Serie</span>
 			</p>
 			<p class="formular__zeit">
-				Datum und Uhrzeit änderst du in der Kalender-App.
+				{{ zeitHinweis }}
 			</p>
 
 			<!-- Nur lesen (U-KAL-09): Werte als Beschreibungsliste in voller Schriftfarbe statt gesperrter Felder. -->
@@ -52,6 +52,19 @@
 						required
 						:maxlength="MAX_LAENGE"
 						v-bind="ncFehler('titel')" />
+				</div>
+
+				<!-- Uhrzeit (Wunsch vom 16.11.2026): nur bei einzelnen Terminen mit Uhrzeit ohne Eingeladene, Datum bleibt. -->
+				<div v-if="termin.zeit_aenderbar" class="formular__reihe">
+					<div v-for="(label, name) in UHRZEITEN" :key="name" class="formular__feld">
+						<label :for="'feld-' + name">{{ label }}{{ name === 'uhrzeit_beginn' || termin.uhrzeit_ende ? ' *' : '' }}</label>
+						<NcTextField :id="'feld-' + name"
+							v-model="werte[name]"
+							label-outside
+							type="time"
+							:required="name === 'uhrzeit_beginn' || termin.uhrzeit_ende !== ''"
+							v-bind="ncFehler(name)" />
+					</div>
 				</div>
 
 				<!-- Ort (U-KAL-01): fieldset mit legend, Knöpfe direkt bei ihrer Beschriftung, Pfeiltasten wechseln. -->
@@ -205,7 +218,7 @@ import NcRadioGroup from '@nextcloud/vue/components/NcRadioGroup'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import Rueckfrage from './Rueckfrage.vue'
-import { MAX_LAENGE, alleFelder, feldnamen, leererWert } from '../felder.js'
+import { MAX_LAENGE, UHRZEITEN, alleFelder, feldnamen, leererWert } from '../felder.js'
 import { fehlertext, terminLaden, terminSpeichern } from '../api.js'
 import { zeitraumText } from '../datum.js'
 
@@ -222,7 +235,7 @@ const ALT = ' (nicht mehr in der Liste)'
 
 const ortVorgabe = computed(() => props.einstellungen.ort_vorgabe ?? '')
 const schema = computed(() => props.einstellungen.schema ?? { abschnitte: [] })
-const namen = computed(() => feldnamen(schema.value))
+const namen = computed(() => feldnamen(schema.value, termin.value?.zeit_aenderbar === true))
 /** Zuletzt geladener oder gespeicherter Stand des Termins; Grundlage für „geändert“ und den ETag. */
 const termin = ref(null)
 const werte = reactive({})
@@ -244,6 +257,9 @@ function formularWerte(daten) {
 		ergebnis[feld.key] = daten[feld.key] ?? leererWert(feld)
 	}
 	ergebnis.titel = daten.titel
+	for (const name of Object.keys(UHRZEITEN)) {
+		ergebnis[name] = daten[name] ?? ''
+	}
 	ergebnis.ort_extern = daten.ort_extern
 	ergebnis.ort = ortVorgabe.value && !daten.ort_extern ? '' : daten.ort
 	return ergebnis
@@ -273,6 +289,21 @@ watch(werte, () => {
 	}
 }, { deep: true })
 
+/** Unter der Zeitangabe: wo sich Datum und Uhrzeit ändern lassen und warum hier nicht. */
+const zeitHinweis = computed(() => {
+	const daten = termin.value
+	if (daten.zeit_aenderbar && daten.schreibbar) {
+		return 'Die Uhrzeit änderst du hier, das Datum in der Kalender-App.'
+	}
+	if (daten.serie) {
+		return 'Datum und Uhrzeit einer Serie änderst du in der Kalender-App.'
+	}
+	if (daten.einladung) {
+		return 'Der Termin hat Eingeladene: Datum und Uhrzeit änderst du in der Kalender-App, damit sie davon erfahren.'
+	}
+	return 'Datum und Uhrzeit änderst du in der Kalender-App.'
+})
+
 const ortWahl = computed({
 	get: () => (werte.ort_extern ? 'extern' : 'vorgabe'),
 	set: (wahl) => { werte.ort_extern = wahl === 'extern' },
@@ -285,6 +316,9 @@ function bezeichnung(name) {
 	}
 	if (name === 'ort' || name === 'ort_extern') {
 		return 'Ort'
+	}
+	if (UHRZEITEN[name]) {
+		return UHRZEITEN[name]
 	}
 	return alleFelder(schema.value).find((f) => f.key === name)?.label ?? name
 }
@@ -350,6 +384,10 @@ function feldAusMeldung(text) {
 	}
 	if (text.includes('externen Ort') || text.includes('„Ort“')) {
 		return 'ort'
+	}
+	const uhrzeit = Object.keys(UHRZEITEN).find((name) => text.includes('„' + UHRZEITEN[name] + '“'))
+	if (uhrzeit) {
+		return uhrzeit
 	}
 	return alleFelder(schema.value).find((f) => text.includes('„' + f.label + '“'))?.key ?? ''
 }
@@ -600,6 +638,13 @@ async function eingabenBehalten() {
 			font-weight: bold;
 			margin-bottom: 4px;
 		}
+	}
+
+	&__reihe {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+		gap: 0 16px;
+		max-width: 400px;
 	}
 
 	&__gruppe {

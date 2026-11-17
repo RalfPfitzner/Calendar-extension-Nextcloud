@@ -3,7 +3,7 @@
 Nextcloud-App für Vereine, Werkstätten und andere Gruppen, die Veranstaltungen im Nextcloud-Kalender planen: Zu jedem Termin gibt es ein Planungsformular, dessen Felder der Admin festlegt (Vorgabe: Grunddaten, Kontaktdaten, teilnehmende Gruppe, Inhalte & Ausstattung, Hinweise). Die Felder stehen als Eigenschaften im Kalendertermin selbst und synchronisieren mit. Die Kalender-App bleibt unverändert.
 
 - Ansicht **Kalender-Planung** in Nextcloud: Liste der Termine (Zeitraum, Suche, seitenweise) und Formular je Termin
-- Felder des Formulars legt der Admin in den Einstellungen fest (Abschnitte, Typen, Pflicht, Listenspalten); Vorgabe sind 16 Felder in fünf Abschnitten
+- Felder des Formulars legt der Admin in den Einstellungen fest (Abschnitte, Typen, Pflicht, Listenspalten); Vorgabe sind 18 Felder in fünf Abschnitten
 - Ort mit vom Admin gesetztem Standardort oder externem Ort mit Adresse; ohne Standardort ein freies Ortsfeld
 - Link „Planung öffnen“ in der Terminbeschreibung: aus der Kalender-App mit einem Klick zum Formular
 - Rechte wie in der Kalender-App: Nur-Lese-Freigaben sehen das Formular schreibgeschützt, private Termine bleiben privat
@@ -42,7 +42,7 @@ Voraussetzung: Admin-Rechte in der Nextcloud und ein beschreibbares `custom_apps
 
 ## Einstellungen (Admin)
 
-Unter **Verwaltung → Kalender-Planung** gibt es die Vorgaben und den Editor für die Felder des Planungsformulars. Alles ist optional; ohne Einstellungen läuft die App mit dem Vorgabe-Schema (16 Felder in fünf Abschnitten, siehe `schema/vorgabe.json`). Die Vorgaben lassen sich auch über `occ` setzen:
+Unter **Verwaltung → Kalender-Planung** gibt es die Vorgaben und den Editor für die Felder des Planungsformulars. Alles ist optional; ohne Einstellungen läuft die App mit dem Vorgabe-Schema (18 Felder in fünf Abschnitten, siehe `schema/vorgabe.json`). Die Vorgaben lassen sich auch über `occ` setzen:
 
 | Schlüssel | Wirkung | Beispiel |
 |---|---|---|

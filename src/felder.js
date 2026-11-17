@@ -20,9 +20,12 @@ export function alleFelder(schema) {
 	return (schema?.abschnitte ?? []).flatMap((a) => a.felder)
 }
 
-/** Namen aller Formularwerte: feste Felder plus Schema-Felder. */
-export function feldnamen(schema) {
-	return ['titel', 'ort_extern', 'ort', ...alleFelder(schema).map((f) => f.key)]
+/** Uhrzeit-Felder des Formulars mit Bezeichnung (wie Planung::UHRZEITEN). */
+export const UHRZEITEN = { uhrzeit_beginn: 'Uhrzeit Beginn', uhrzeit_ende: 'Uhrzeit Ende' }
+
+/** Namen aller Formularwerte: feste Felder, bei änderbarer Zeit die Uhrzeiten, dann die Schema-Felder. */
+export function feldnamen(schema, mitUhrzeit = false) {
+	return ['titel', 'ort_extern', 'ort', ...(mitUhrzeit ? Object.keys(UHRZEITEN) : []), ...alleFelder(schema).map((f) => f.key)]
 }
 
 /** Felder, die als Spalten in der Liste stehen (der Server begrenzt auf drei). */

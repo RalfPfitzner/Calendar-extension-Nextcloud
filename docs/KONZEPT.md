@@ -19,7 +19,10 @@ Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist de
 |---|---|---|
 | Titel der Veranstaltung | `titel` | `SUMMARY` |
 | Ort (Standardort / externer Ort mit Adresse) | `ort` | `LOCATION` |
+| Uhrzeit Beginn / Uhrzeit Ende (nur Uhrzeit, siehe unten) | `uhrzeit_beginn`, `uhrzeit_ende` | `DTSTART`, `DTEND` |
 | Zuständig intern | `zustaendig` | `X-CALPLAN-ZUSTAENDIG` |
+| Eingetragen von | `eingetragen_von` | `X-CALPLAN-EINGETRAGEN-VON` |
+| Eingetragen am | `eingetragen_am` | `X-CALPLAN-EINGETRAGEN-AM` |
 | Parkmöglichkeiten / Zufahrt / Anlieferung | `zufahrt` | `X-CALPLAN-ZUFAHRT` |
 | Raum-Informationen | `raum` | `X-CALPLAN-RAUM` |
 | Organisation / Firma | `kontakt_organisation` | `X-CALPLAN-KONTAKT-ORGANISATION` |
@@ -40,6 +43,8 @@ Eigene Eigenschaften tragen das Präfix `X-CALPLAN-`; der Rest des Namens ist de
 - Pflicht ist nur der Titel; bei externem Ort die Adresse. Pflichtfelder, Längen, Optionen und Typen prüft der Server nach dem Schema; eine eingetragene E-Mail-Adresse muss gültig sein.
 - Werte je Typ: Text wie eingegeben (einzeilig ohne Umbrüche), Zahl als eingegebene Zeichenkette (`12` oder `12,5`), Auswahl eine der Optionen (ein gespeicherter Wert, den der Admin aus den Optionen entfernt hat, bleibt erhalten und lässt sich unverändert speichern), Ja/Nein als `1` oder fehlende Eigenschaft, Datum als `JJJJ-MM-TT`.
 - Ort mit Standardort (Einstellung `ort_vorgabe`): Ist `LOCATION` leer oder gleich dem Standardort, zeigt das Formular den Standardort; jeder andere Ort gilt als externer Ort. Beim Speichern mit Standardort wird genau dieser Text als Ort eingetragen. Eine eigene Eigenschaft für „extern“ gibt es nicht.
+- **Uhrzeit** (Wunsch von Eva am 16.11.2026, Variante „Uhrzeit des Termins im Formular“ am 17.11.2026 gewählt, Grenzen von Ralf am 17.11.2026 bestätigt): Das Formular zeigt Beginn und Ende als Uhrzeit (HH:MM in der Ortszeit `Europe/Berlin`) und schreibt sie in `DTSTART`/`DTEND`. Das Datum bleibt immer, auch das des Endes bei mehrtägigen Terminen; es wird in der Kalender-App geändert. Änderbar nur bei einem einzelnen Termin mit Uhrzeit (`zeit_aenderbar`): nicht bei Serien (die Zeit gälte für alle Termine), Ausnahmen einer Serie und ganztägigen Terminen, und nicht bei Terminen mit Eingeladenen (`ATTENDEE`), weil die App am CalDAV-Server vorbei schreibt und die Eingeladenen keine Aktualisierung bekämen. Die Zeiten behalten ihre Form (gleiche TZID, UTC oder ohne Zone), `DURATION` wird zu `DTEND`, `SEQUENCE` zählt hoch. Bleibt die Uhrzeit gleich, fasst die App `DTSTART`/`DTEND` nicht an. Das Ende muss nach dem Beginn liegen; Uhrzeiten in der Lücke der Sommerzeit-Umstellung lehnt der Server ab.
+- **Eingetragen von / am** (gleicher Wunsch): Eva trägt beides von Hand ein (Mail vom 17.11.2026), deshalb zwei gewöhnliche Felder im Schema (Text und Datum), keine automatische Erfassung durch die App.
 - Ort ohne Standardort: ein freies Ortsfeld, leer erlaubt (`LOCATION` wird dann entfernt).
 - Die Schlüssel sind Datenformat. Wer im Schema einen Schlüssel ändert, trennt das Feld von bereits erfassten Werten; die App liest und löscht nur Eigenschaften, deren Schlüssel im aktuellen Schema stehen, alle anderen bleiben unangetastet.
 - `X-CALPLAN-LINK` hält die zuletzt in die Beschreibung geschriebene Link-Zeile (siehe Abschnitt 4, Link „Planung öffnen“); der Feldschlüssel `link` ist dafür reserviert.

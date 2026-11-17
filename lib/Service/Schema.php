@@ -35,6 +35,7 @@ final class Schema {
 	public const RESERVIERT = [
 		'titel', 'ort', 'ort_extern', 'uid', 'beginn', 'ende', 'ganztags', 'serie', 'beschreibung',
 		'geplant', 'kalender', 'objekt', 'etag', 'schreibbar', 'felder', 'link',
+		'uhrzeit_beginn', 'uhrzeit_ende', 'zeit_aenderbar', 'einladung',
 	];
 
 	/** @var list<array{titel:string,felder:list<array{key:string,label:string,typ:string,pflicht:bool,maxlen:int,optionen:list<string>,inListe:bool}>}> */

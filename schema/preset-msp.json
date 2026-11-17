@@ -5,6 +5,8 @@
 			"titel": "1. Grunddaten",
 			"felder": [
 				{ "key": "zustaendig", "label": "Zuständig intern", "typ": "text", "inListe": true },
+				{ "key": "eingetragen_von", "label": "Eingetragen von", "typ": "text", "maxlen": 100 },
+				{ "key": "eingetragen_am", "label": "Eingetragen am", "typ": "date" },
 				{ "key": "zufahrt", "label": "Parkmöglichkeiten / Zufahrt / Anlieferung", "typ": "textarea" },
 				{ "key": "raum", "label": "Raum-Informationen", "typ": "textarea" }
 			]

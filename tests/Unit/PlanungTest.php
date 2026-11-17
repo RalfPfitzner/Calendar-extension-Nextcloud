@@ -54,7 +54,7 @@ class PlanungTest extends TestCase {
 		$this->assertSame('2026-11-05T14:00:00+01:00', $daten['beginn']);
 		$this->assertSame('2026-11-05T17:00:00+01:00', $daten['ende']);
 		$this->assertSame('', $daten['hinweise']);
-		$this->assertCount(16, array_intersect_key($daten, Schema::vorgabe()->felder));
+		$this->assertCount(18, array_intersect_key($daten, Schema::vorgabe()->felder));
 	}
 
 	public function testSchreibenUndLesenErgibtDieselbenWerte(): void {
@@ -695,5 +695,134 @@ class PlanungTest extends TestCase {
 		$this->assertSame('Vereinsheim', $e->ortVorgabe);
 		$this->assertSame('Planung', $e->kalenderMuster);
 		$this->assertSame('Info: ', $e->linkText);
+	}
+
+	// Uhrzeit im Formular (Wunsch vom 16.11.2026)
+
+	/** Einzelner Termin ohne Eingeladene; $zeiten ersetzt DTSTART/DTEND. */
+	private static function einzeln(string $zeiten = "DTSTART;TZID=Europe/Berlin:20261105T140000\r\nDTEND;TZID=Europe/Berlin:20261105T170000\r\n",
+		string $zusatz = ''): string {
+		return "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//DE\r\nBEGIN:VEVENT\r\nUID:z1\r\nDTSTAMP:20261001T000000Z\r\n"
+			. $zeiten . "SUMMARY:Lötworkshop\r\n{$zusatz}END:VEVENT\r\nEND:VCALENDAR\r\n";
+	}
+
+	private static function berlin(): DateTimeZone {
+		return new DateTimeZone('Europe/Berlin');
+	}
+
+	/** Schreibt die Uhrzeiten in $ics und gibt den Termin zurück. */
+	private function mitUhrzeit(string $ics, string $beginn, string $ende): \Sabre\VObject\Component\VEvent {
+		$neu = $this->planung->schreiben($ics, $this->eingabe(['uhrzeit_beginn' => $beginn, 'uhrzeit_ende' => $ende]), null, null, self::berlin());
+		return Reader::read($neu)->VEVENT;
+	}
+
+	public function testLesenLiefertUhrzeitenUndObSieAenderbarSind(): void {
+		$daten = $this->planung->lesen(self::einzeln(), null, null, self::berlin());
+		$this->assertSame(['14:00', '17:00', true, false],
+			[$daten['uhrzeit_beginn'], $daten['uhrzeit_ende'], $daten['zeit_aenderbar'], $daten['einladung']]);
+		// UTC-Zeiten erscheinen in der Ortszeit.
+		$utc = $this->planung->lesen(self::einzeln("DTSTART:20260705T080000Z\r\nDTEND:20260705T100000Z\r\n"), null, null, self::berlin());
+		$this->assertSame(['10:00', '12:00'], [$utc['uhrzeit_beginn'], $utc['uhrzeit_ende']]);
+		// Mit Eingeladenen, als Serie, ganztägig oder mit Ausnahmen nicht änderbar.
+		$einladung = $this->planung->lesen(self::ics(), null, null, self::berlin());
+		$this->assertSame([false, true], [$einladung['zeit_aenderbar'], $einladung['einladung']]);
+		$this->assertFalse($this->planung->lesen(self::einzeln(zusatz: "RRULE:FREQ=WEEKLY\r\n"))['zeit_aenderbar']);
+		$ganztags = $this->planung->lesen(self::einzeln("DTSTART;VALUE=DATE:20261105\r\nDTEND;VALUE=DATE:20261106\r\n"));
+		$this->assertSame([false, '', ''], [$ganztags['zeit_aenderbar'], $ganztags['uhrzeit_beginn'], $ganztags['uhrzeit_ende']]);
+		$ausnahme = self::einzeln(zusatz: "RRULE:FREQ=DAILY\r\n") ;
+		$ausnahme = str_replace("END:VCALENDAR", "BEGIN:VEVENT\r\nUID:z1\r\nRECURRENCE-ID;TZID=Europe/Berlin:20261106T140000\r\n"
+			. "DTSTART;TZID=Europe/Berlin:20261106T150000\r\nEND:VEVENT\r\nEND:VCALENDAR", $ausnahme);
+		$this->assertFalse($this->planung->lesen($ausnahme)['zeit_aenderbar']);
+	}
+
+	public function testUhrzeitAendernBehaeltDatumZoneUndZaehltSequenceHoch(): void {
+		$termin = $this->mitUhrzeit(self::einzeln(), '09:30', '12:15');
+		$this->assertSame('20261105T093000', (string)$termin->DTSTART);
+		$this->assertSame('Europe/Berlin', (string)$termin->DTSTART['TZID']);
+		$this->assertSame('20261105T121500', (string)$termin->DTEND);
+		$this->assertSame('Europe/Berlin', (string)$termin->DTEND['TZID']);
+		$this->assertSame('1', (string)$termin->SEQUENCE);
+		$this->assertSame('3', (string)$this->mitUhrzeit(self::einzeln(zusatz: "SEQUENCE:2\r\n"), '10:00', '11:00')->SEQUENCE);
+	}
+
+	public function testUhrzeitBleibtInDerFormDesTermins(): void {
+		// UTC bleibt UTC (Sommerzeit: 10:00 in Berlin ist 08:00 UTC).
+		$utc = $this->mitUhrzeit(self::einzeln("DTSTART:20260705T080000Z\r\nDTEND:20260705T100000Z\r\n"), '10:00', '13:00');
+		$this->assertSame(['20260705T080000Z', '20260705T110000Z'], [(string)$utc->DTSTART, (string)$utc->DTEND]);
+		// Ohne Zone bleibt ohne Zone (Wanduhrzeit).
+		$floating = $this->mitUhrzeit(self::einzeln("DTSTART:20261105T140000\r\nDTEND:20261105T160000\r\n"), '18:00', '20:00');
+		$this->assertSame(['20261105T180000', '20261105T200000'], [(string)$floating->DTSTART, (string)$floating->DTEND]);
+		$this->assertFalse(isset($floating->DTSTART['TZID']));
+		$this->assertTrue($floating->DTSTART->isFloating());
+		// DURATION wird zu DTEND.
+		$dauer = $this->mitUhrzeit(self::einzeln("DTSTART;TZID=Europe/Berlin:20261105T140000\r\nDURATION:PT2H\r\n"), '14:00', '18:00');
+		$this->assertFalse(isset($dauer->DURATION));
+		$this->assertSame(['20261105T180000', 'Europe/Berlin'], [(string)$dauer->DTEND, (string)$dauer->DTEND['TZID']]);
+		// Mehrtägig: das Datum des Endes bleibt.
+		$mehrtaegig = $this->mitUhrzeit(self::einzeln("DTSTART;TZID=Europe/Berlin:20261105T140000\r\nDTEND;TZID=Europe/Berlin:20261107T120000\r\n"), '15:00', '09:00');
+		$this->assertSame(['20261105T150000', '20261107T090000'], [(string)$mehrtaegig->DTSTART, (string)$mehrtaegig->DTEND]);
+	}
+
+	public function testOhneEndeBleibtOhneEndeOderBekommtEinsAmSelbenTag(): void {
+		$ics = self::einzeln("DTSTART;TZID=Europe/Berlin:20261105T140000\r\n");
+		$this->assertSame('', $this->planung->lesen($ics, null, null, self::berlin())['uhrzeit_ende']);
+		$ohne = $this->mitUhrzeit($ics, '15:00', '');
+		$this->assertSame('20261105T150000', (string)$ohne->DTSTART);
+		$this->assertFalse(isset($ohne->DTEND));
+		$mit = $this->mitUhrzeit($ics, '15:00', '16:30');
+		$this->assertSame(['20261105T163000', 'Europe/Berlin'], [(string)$mit->DTEND, (string)$mit->DTEND['TZID']]);
+	}
+
+	public function testUnveraenderteUhrzeitFasstDieZeitenNichtAn(): void {
+		// Auch bei Terminen, deren Zeit hier nicht änderbar ist (Eingeladene), solange die Uhrzeit gleich bleibt.
+		$ics = self::ics("SEQUENCE:4\r\n");
+		$termin = $this->mitUhrzeit($ics, '14:00', '17:00');
+		$this->assertSame(['20261105T140000', '20261105T170000', '4'], [(string)$termin->DTSTART, (string)$termin->DTEND, (string)$termin->SEQUENCE]);
+		// Ohne Uhrzeit in der Eingabe ebenso.
+		$ohne = Reader::read($this->planung->schreiben($ics, $this->eingabe(), null, null, self::berlin()))->VEVENT;
+		$this->assertSame('4', (string)$ohne->SEQUENCE);
+	}
+
+	/** @return array<string,array{0:string,1:string,2:string,3:string}> */
+	public static function ungueltigeUhrzeiten(): array {
+		$serie = self::einzeln(zusatz: "RRULE:FREQ=WEEKLY\r\n");
+		return [
+			'Eingeladene' => [self::ics(), '15:00', '17:00', 'nur in der Kalender-App'],
+			'Serie' => [$serie, '15:00', '17:00', 'nur in der Kalender-App'],
+			'ganztägig' => [self::einzeln("DTSTART;VALUE=DATE:20261105\r\n"), '15:00', '', 'nur in der Kalender-App'],
+			'Ende vor Beginn' => [self::einzeln(), '15:00', '14:00', '„Uhrzeit Ende“ muss nach dem Beginn'],
+			'Ende gleich Beginn' => [self::einzeln(), '15:00', '15:00', '„Uhrzeit Ende“ muss nach dem Beginn'],
+			'Ende fehlt' => [self::einzeln(), '15:00', '', '„Uhrzeit Ende“ fehlt'],
+			'Beginn fehlt' => [self::einzeln(), '', '17:00', '„Uhrzeit Beginn“ fehlt'],
+			'Sommerzeit-Lücke' => [self::einzeln("DTSTART;TZID=Europe/Berlin:20270328T010000\r\nDTEND;TZID=Europe/Berlin:20270328T050000\r\n"),
+				'02:30', '05:00', 'wegen der Zeitumstellung'],
+		];
+	}
+
+	#[\PHPUnit\Framework\Attributes\DataProvider('ungueltigeUhrzeiten')]
+	public function testUngueltigeUhrzeitWirdAbgelehnt(string $ics, string $beginn, string $ende, string $meldung): void {
+		try {
+			$this->mitUhrzeit($ics, $beginn, $ende);
+			$this->fail('Keine Ausnahme');
+		} catch (PlanungException $e) {
+			$this->assertStringContainsString($meldung, $e->getMessage());
+			$this->assertSame(400, $e->getCode());
+		}
+	}
+
+	public function testUhrzeitFormatWirdGeprueft(): void {
+		$this->assertSame('14:05', $this->eingabe(['uhrzeit_beginn' => ' 14:05:30 '])['uhrzeit_beginn']);
+		$this->assertNull($this->eingabe()['uhrzeit_ende']);
+		$this->assertSame('', $this->eingabe(['uhrzeit_ende' => ''])['uhrzeit_ende']);
+		foreach (['24:00', '9:00', '14:60', 'mittags', '14:00 Uhr'] as $falsch) {
+			try {
+				$this->eingabe(['uhrzeit_beginn' => $falsch]);
+				$this->fail($falsch);
+			} catch (PlanungException $e) {
+				$this->assertStringContainsString('„Uhrzeit Beginn“ muss eine Uhrzeit im Format HH:MM sein', $e->getMessage());
+			}
+		}
+		$this->expectExceptionMessage('„Uhrzeit Ende“ ist kein Text');
+		$this->eingabe(['uhrzeit_ende' => 1400]);
 	}
 }

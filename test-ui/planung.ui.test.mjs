@@ -545,3 +545,48 @@ test('U-KAL-05: zweiter Konflikt nach „Meine Eingaben behalten“ zeigt den ne
 	assert.equal(stand.hinweise, 'Zweite Änderung')
 	assert.deepEqual(fehler, [])
 })
+
+test('Uhrzeit im Formular: ändern, speichern, im Termin und in der Kopfzeile wiederfinden', async () => {
+	const kalender = await planungskalenderId()
+	await formularOeffnen(seite, kalender, 'fuellung-30.ics')
+	const beginn = seite.getByLabel('Uhrzeit Beginn', { exact: false })
+	const ende = seite.getByLabel('Uhrzeit Ende', { exact: false })
+	assert.equal(await beginn.inputValue(), '10:00')
+	assert.equal(await ende.inputValue(), '12:00')
+	await seite.getByText('Die Uhrzeit änderst du hier, das Datum in der Kalender-App.').waitFor()
+
+	// Ende vor Beginn: Meldung des Servers am Feld, nichts gespeichert.
+	await beginn.fill('13:15')
+	await ende.fill('11:00')
+	await seite.getByRole('button', { name: 'Speichern' }).click()
+	await seite.getByText('„Uhrzeit Ende“ muss nach dem Beginn liegen').waitFor()
+	assert.equal(await ende.getAttribute('aria-invalid'), 'true')
+	assert.equal((await api('GET', `/termin?kalender=${kalender}&termin=fuellung-30.ics`)).daten.uhrzeit_beginn, '10:00')
+
+	await ende.fill('15:45')
+	await seite.getByRole('button', { name: 'Speichern' }).click()
+	await seite.getByText('Gespeichert.').waitFor()
+	assert.match(await seite.locator('.formular__zeit').first().innerText(), /13:15–15:45/)
+
+	const daten = (await api('GET', `/termin?kalender=${kalender}&termin=fuellung-30.ics`)).daten
+	assert.deepEqual([daten.uhrzeit_beginn, daten.uhrzeit_ende], ['13:15', '15:45'])
+	assert.match(daten.beginn, /T13:15:00\+0[12]:00$/)
+	await seite.reload()
+	await seite.getByRole('heading', { name: /^Planung:/ }).waitFor()
+	assert.equal(await seite.getByLabel('Uhrzeit Beginn').inputValue(), '13:15')
+	assert.deepEqual(fehler, [])
+})
+
+test('Uhrzeit bei einer Serie nicht änderbar, mit Hinweis', async () => {
+	const kalender = await planungskalenderId()
+	await formularOeffnen(seite, kalender, 'serie-1.ics')
+	await seite.getByText('Datum und Uhrzeit einer Serie änderst du in der Kalender-App.').waitFor()
+	assert.equal(await seite.getByLabel('Uhrzeit Beginn').count(), 0)
+	// Auch über die API nicht: eine andere Uhrzeit lehnt der Server ab.
+	const stand = (await api('GET', `/termin?kalender=${kalender}&termin=serie-1.ics`)).daten
+	const antwort = await api('PUT', '/termin', { kalender, termin: 'serie-1.ics', etag: stand.etag,
+		planung: { titel: stand.titel, ort_extern: false, ort: '', uhrzeit_beginn: '07:00', uhrzeit_ende: '08:00' } })
+	assert.equal(antwort.status, 400)
+	assert.match(antwort.daten.fehler, /nur in der Kalender-App/)
+	assert.deepEqual(fehler, [])
+})
