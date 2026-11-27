@@ -21,13 +21,13 @@
     "@nextcloud/axios": "^2.6.0",
     "@nextcloud/router": "^3.2.0",
     "@nextcloud/vue": "^9.14.1",
-    "vue": "^3.5.45"
+    "vue": "^3.5.46"
   },
   "devDependencies": {
     "@nextcloud/browserslist-config": "^3.1.2",
     "@nextcloud/vite-config": "^2.5.4",
-    "playwright-core": "^1.65.0",
-    "sass": "^1.108.1",
+    "playwright-core": "^1.65.1",
+    "sass": "^1.108.2",
     "typescript": "^5.9.3",
     "vite": "^7.3.8"
   },
